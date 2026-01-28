@@ -3,34 +3,37 @@ title: "Assignment 1 – Social Network Analysis"
 author: ""
 date: "2026-01-28"
 format:
-  html:
+  pdf:
+    number-sections: false
+    fig-cap-location: top
+    tbl-cap-location: top
+    fig-numbering: true
+    tbl-numbering: true
     toc: true
-    toc-location: left
-    toc-depth: 3
-    toc-expand: 1
-    toc-title: Contents
-    number-sections: true
-    number-offset: -1
-    css: style.css
-    embed-resources: true
-    theme: cosmo
-editor_options: 
-  chunk_output_type: console
+    toc-depth: 2
+execute:
+  echo: false
+  warning: false
+  message: false
 ---
 
-# Content of this lab: Introduction
 
-1. Data formats and packages for social network analysis in R
-2. Reading and exploring network data
-3. Network visualizations
-4. Elementary transformation: dichotomization, transposition, and symmetrization
+
+Formulate and write down your understanding
+of the data (i.e. what are nodes and edges) before you start coding.
+
+
+My understanding of the data is the following. The dataset is a social network of lawyers in one law firm. Each node represents one lawyer. An edge represents a directed relationship from one lawyer to another. I use the advice network, meaning that there is a directed tie from lawyer i to lawyer j if lawyer i goes to lawyer j for professional advice. Therefore, the network is directed because advice can be asked in one direction without being mutual.
+
+1. Describe your dataset verbally. Write an R-script that reads your data. Transform your data into a format that you will use later. Answer: Why have you chosen this specific format? 
+
+
 
 
 ```{r setup 1, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
-# Clean the environment
-rm(list=ls())
+rm(list = ls())
 
 library(sna) # networks package
 library(igraph) # networks package 
@@ -43,422 +46,457 @@ library(dplyr) # data manipulation
 library(data.table) # data handling
 library(gridExtra)
 
-# Sometimes convenient to detach packages
-# detach(package:sna,unload = TRUE)
 
-# Or call functions by specifying the package they are from
-# sna::betweenness()
-# igraph::betweenness()
+options(scipen = 999)
 
-options(scipen=999) # set notation option
+# Folder where the dataset files are
+data_dir <- "~/Lab-assignments---Social-Network-Analysis/LAB 1 SNA/data/LazegaLawyers"
 
-#knitr::opts_knit$set(root.dir = "YOUR PATH")
-knitr::opts_knit$set(root.dir = "/Users/alexandrarottenkolber/Documents/03_PhD_at_LiU/08_Sessions_by_me/SNA/2026_Lab_sessions_1_4/session_1")
+# Read files
+net  <- read.table(file.path(data_dir, "ELadv.dat"), header = FALSE)
+attr <- read.table(file.path(data_dir, "ELattr.dat"), header = FALSE)
 
-```
+# Convert to matrix
+net_mtx <- as.matrix(net)
 
-# Data formats and packages for social network analysis in R
+# Add node ids as row and column names (1..N)
+node_ids <- 1:nrow(net_mtx)
+rownames(net_mtx) <- node_ids
+colnames(net_mtx) <- node_ids
 
-## Data formats
-
-```{r data formats 1}
-# Vectors, matrices, and data frames
-# A VECTOR is collection of elements (often of the same type)
-v <- c(0,1,2,3,4,5)
-v
-```
-
-```{r data formats 2}
-# If elements of different class (numeric, logical, characters), R uses the less exigent class for the vector
-v2 <- c(1,2,3,'a','b',TRUE,FALSE,NaN)
-v2 
-```
-
-```{r data formats 3}
-# Notice that numbers (ar logical operators) were turned into "character" 
-class(v)
-class(v2)
-```
-
-```{r operations}
-v+1 # scalars are applied to all elements of a vector
-v*rev(v) # in vectors of the same length, operations are performed element to element 
-v*c(1,2) # otherwise, R repeats the shorter vector
-```
-
-```{r dataframes}
-# We are accustomed to see vectors as columns in a DATA FRAME
-data <- mtcars
-class(data)
-#View(data)
-head(data,20) # show the first 20 rows of the data frame
-
-data$mpg # The first column is a vector
-data$cyl # The second column is another vector
-# In short, a data frame is simply a collection of vectors. 
-```
-
-```{r matrices 1}
-# In SNA, the basic element is the MATRIX
-# Whereas a vector is uni-dimensional, a matrix is two-dimensional
-mtx <- matrix(c(0,1,1,
-                1,0,0,
-                2,1,0),
-              nrow=3,ncol=3,byrow=TRUE)
-mtx
-```
-
-```{r matrices 2}
-class(mtx) # An array is a n-dimensional object (you can create objects of 3, 4,... dimensions)
-dim(mtx) # Shows the number of elements in each dimension (a 3x3 matrix in this case)
-
-# Notice you would normally name the dimensions 
-dimnames(mtx) <- list(c('Amy','Bjorn','Carl'),c('Amy','Bjorn','Carl'))
-mtx
-```
-
-```{r matrices 3}
-# Each element of the matrix can be accessed using the position (or the names if available)
-mtx[1,2] # first row, second column
-mtx['Carl','Amy'] # third row, first column
-```
-
-```{r matrices 4}
-# You can replace elements too
-mtx[3,1] <- 0 # This overwrites the element corresponding to 3rd row, 1st column
-mtx
-```
-
-```{r matrices 5}
-# In SNA, one important function for matrices is the diagonal
-diag(mtx) # The elements in positions (1,1), (2,2), (3,3),... (n,n)
-diag(mtx) <- NA # Often sent to missing data. Done because having it set to zero would mean that there are no self-loops, 
-# while NA would mean that the ties itself cannot exist per definition, and are just excluded
-# Important to note that missing is different from the zero!
-mtx
-```
-
-```{r matrices 6}
-# Visualize the adjacency matrix
-mtx |> 
-  reshape2::melt() |> 
-ggplot2::ggplot(ggplot2::aes(x=Var1,y=Var2,fill=value |> as.factor()))+
-  ggplot2::geom_tile()+
-  ggplot2::labs(title='Adjacency matrix', x=NULL, y=NULL)+
-  ggplot2::scale_fill_manual(values=c('white','steelblue', "lightgray"), name='Contact', labels=c('No','Yes', NA))+
-  ggplot2::theme_minimal()
-```
-
-
-
-```{r edgelist}
-# What we have now could be an actual network
-# Say the values indicate whether person i (in the rows) respects person j (in the columns)
-# How would you interpret this network?
-
-# Matrices are heavy objects. Often network data is stored as edge lists
-edgelist <- data.frame(person1=c('Amy','Amy','Bjorn','Carl'),
-                       person2=c('Bjorn','Carl','Amy','Bjorn'))
-edgelist
-# No worry about this, we will use some existing packages to perform the transformation
-```
-
-## R packages for social network analysis
-
-There are plenty of packages tailored to perform different types of SNA in R. Among these,
-
-  + "sna" 
-  + "igraph"
-  + "network"
-  + "tidygraph" https://tidygraph.data-imaginist.com/ 
-  + "ggraph"  for visualisations (uses ggplot2)
-  + "statnet"  meta-package; herein you have "ergm", "tergm", etc.
-  + "RSiena"  for Stochastic Actor-Oriented Models (SAOMs)
-  + "intergraph"  for conversion between network data objects (igraph, network, matrix, edge list, etc.)
-  + "influenceR"  for measures of structural importance (effective network size, constraint, bridging)
-  + "egor"  for ego-nets (uses igraph objects)
-  + "netseg"  for assortativity patterns, homophily, segregation, within-group mixing, etc.
-  + "isnar"
-  + "netropy" 
-  + "networkdata" a large sample of networks in igraph format (to install networkdata, see: https://github.com/schochastics/networkdata)
-  + etc.
-
-To install packages, type the name of the package within (don't forget quotation marks): install.packages(""),
-install.packages(c('sna','igraph')),
-install.packages("isnar")
-
-To use them, type the name of the package within: library()
-
-library(sna)
-
-detach("package:sna") --> detach is useful when functions from different packages overlap, so the first function is masked
-
-The most widely used R packages for (simple) network analysis are called `sna` and `igraph`. 
-
-## Data handling 
-
-```{r data handling 1}
-
-# reading in and exploring network data, an example 
-
-# Information on the data we will use
-#browseURL("https://www.stats.ox.ac.uk/~snijders/siena/s50_data.htm")
-
-edges_t1 <- read.csv("./s50_data/s50-network1.dat", header = FALSE, sep = " ") # adjacency matrix of the student network
-edges_t1$V1 <- NULL # remove index
-
-node_sport <- read.csv("./s50_data/s50-sport.dat", header = FALSE, sep = " ") # How much sport people do 
-node_sport$V1 <- NULL # remove index
-names(node_sport) <- c("t1", "t2", "t3") # set column names
-node_sport["node_id"] <- colnames(edges_t1)
-
-node_alc <- read.csv("./s50_data/s50-alcohol.dat", header = FALSE, sep = " ") # How much alcohol people drink
-node_alc$V1 <- NULL # remove index
-names(node_alc) <- c("t1", "t2", "t3") # set column names
-node_alc["node_id"] <- colnames(edges_t1)
-```
-
-```{r data handling 2}
-
-# Data exploration
-class(node_sport); class(node_alc); class(edges_t1)
-dim(node_sport); dim(node_alc); dim(edges_t1)
-
-head(node_sport) # this is a standard data set, each row represents a person (N = 50)
-# For your own analysis it it always good to check for duplicates
-# length(unique(nodes$ID)) == nrow(nodes))
-colnames(node_sport)
-
-head(edges_t1) # This is an adjacency matrix (student -> reported friend)
-colnames(edges_t1)
-# If we had an edge list, it makes sense check whether there are any duplicated ties (any(duplicated(edge_list))
-
-```
-
-## Graph objects
-
-To create a graph object, SNA works with matrices as inputs, while this is not the case for IGRAPH. IGRAPH requires igraph objects as inputs. You can find information on the basic IGRAPH datatypes [here](https://igraph.org/c/doc/igraph-Basic.html).
-
-```{r data handling 3}
-
-# Conversion to igraph graph
-mtx <- as.matrix(edges_t1)
-grph <- graph_from_adjacency_matrix(mtx) # igraph functions take matrices as inputs
-length(as_edgelist(grph)) # 226 ties
-length(isolates(mtx)) # number of isolates
-```
-
-# Visualisation
-
-## Simple visualisation
-```{r visualisation 1}
-# visualise graph
-sna::gplot(mtx,displaylabels = TRUE)
-
-
-# Using the igraph library
-
-#plot.igraph(mtx) # this will throw an error 
-grph |> 
-  igraph::plot.igraph(
-            vertex.label='', vertex.size=4,
-            edge.color='darkgrey', edge.arrow.size=.2,
-            layout=layout_with_kk(grph), # other options: layout_nicely, layout_with_fr (<-- this one is furchterman reingold)
-            main='Friendship network')
-
-
-# Using the ggraph library
-grph |> 
-  ggraph::ggraph(layout = "kk") +
-  geom_edge_link() +
-  geom_node_label(aes(label=name)) +
-  theme_void() +
-  ggtitle("Network visualisation with ggraph")
-```
-
-## Visualisation of node attributes
-
-```{r visualisation 2}
-# Addition of nodes' attributes (amount of sport and alcohol consumption)
-# Be careful to correctly match the igraph object with attribute data
-V(grph)$name[1:10] # This is the order in which nodes appear in the igraph object
-node_sport$node_id[1:10] # This - the order in the other element
-# Use the match function
-node_sport[match(V(grph)$name,node_sport$node_id),]$t1 # usually nodes and edges are not aligned in the same order => make sure you assign the right attributes to the right node 
-node_alc[match(V(grph)$name,node_alc$node_id),]$t1 
-
-V(grph)$sport <- node_sport[match(V(grph)$name,node_sport$node_id),]$t1
-V(grph)$alc_con <- node_alc[match(V(grph)$name,node_alc$node_id),]$t1
-
-# Final inspection of the igraph object
-grph
-```
-
-```{r visualisation 3}
-
-# Remember nodes attributes can be visualized
-# -- Sport
-plot.igraph(grph,
-            vertex.label='',vertex.size=4,vertex.color=ifelse(V(grph)$sport == 2,'royalblue','orange'), # 2 means regular sport
-            edge.color='darkgrey',edge.arrow.size=.2,
-            layout=layout_with_kk(grph),
-            main='Friendship network with level of sport \nblue: regular, orange: not regular')
-
-
-legend(
-  x = 1.2, 
-  y = 0.2,
-  xpd = TRUE,
-  legend = c("Regular", "Not regular"),
-  title = "Sport",
-  pch = 21,
-  pt.bg = c("royalblue", "orange"),
-  pt.cex = 1.5,
-  bty = "n",
-  inset = 0.02
+# Name the attribute columns (your file has 8 columns)
+colnames(attr) <- c(
+  "id",
+  "seniority",
+  "status",
+  "gender",
+  "office",
+  "years_firm",
+  "age",
+  "practice"
 )
-  
 
+# Create igraph object (directed advice network)
+g <- graph_from_adjacency_matrix(net_mtx, mode = "directed", diag = FALSE)
+
+# Attach attributes to the graph (match by id)
+attr <- attr %>% arrange(id)
+
+V(g)$id         <- attr$id
+V(g)$seniority  <- attr$seniority
+V(g)$status     <- attr$status
+V(g)$gender     <- attr$gender
+V(g)$office     <- attr$office
+V(g)$years_firm <- attr$years_firm
+V(g)$age        <- attr$age
+V(g)$practice   <- attr$practice
 
 ```
 
-```{r visualisation 4}
 
-# -- Alcohol consumption
-# Create a palette
-unique(V(grph)$alc_con)
-pal <- c("royalblue", "lightblue", "lightgreen", "orange", "red") # Alcohol: 1 (non), 2 (once or twice a year), 3 (once a month), 4 (once a week) and 5 (more than once a week).
-
-# Get each node's consumption behaviour
-nodeCon <- V(grph)$alc_con[!duplicated(V(grph)$name)]
-
-# Assign to the vertices as a color attribute
-V(grph)$alc_color <- pal[nodeCon]
-
-plot.igraph(grph,
-            vertex.label='', 
-            vertex.size=4,
-            vertex.color=V(grph)$alc_color, # 2 means regular sport
-            edge.color='darkgrey',
-            edge.arrow.size=.2,
-            layout=layout_with_kk(grph),
-            main='Friendship network with alcohol consumption \nblue (non), lightblue (once or twice a year), green (once a month),\norange (once a week) and red (more than once a week)')
-
-legend(
-  x = 1.2, 
-  y = 0.5,
-  xpd = TRUE,
-  legend = c(
-    "non",
-    "once or twice\na year",
-    "once a month",
-    "once a week",
-    "more than once\na week"
+```{r include=TRUE}
+dataset_summary <- data.frame(
+  Description = c(
+    "Number of nodes",
+    "Number of edges",
+    "Network type",
+    "Relation"
   ),
-  title = "Alcohol consumption",
-  pch = 21,
-  pt.bg = pal,
-  pt.cex = 1.5,
-  bty = "n",
-  inset = 0.02
+  Value = c(
+    vcount(g),
+    ecount(g),
+    "Directed",
+    "Advice"
+  )
 )
+
+knitr::kable(
+  dataset_summary,
+  caption = "Basic description of the Lazega Lawyers advice network"
+)
+
+
+
 ```
 
-# Transformations
 
-## Dichotomization (recoding)
+Table 1 provides a basic description of the Lazega Lawyers advice network. The network consists of 71 nodes, each representing one lawyer in a single law firm, and 892 directed edges, which represent advice-seeking relationships between lawyers. The network is directed because advice can be requested from one lawyer to another without necessarily being reciprocated.
 
-```{r transformations 1}
+The relation analyzed in this assignment is the advice network, meaning that a directed tie exists from lawyer i to lawyer j if lawyer i seeks professional advice from lawyer j. The dataset also includes several node-level attributes, such as gender, office, organizational status (partner or associate), seniority, age, and practice area.
 
-# Useful when valued or weighted matrices, but we aim for a simple analysis (logistic regression)
-# Image, respondents were asked to assess their relationship with others on a scale 1 to 5
+The adjacency matrix was read and transformed into an igraph object, and node attributes were attached to the graph. The igraph format was chosen because it efficiently stores both the network structure and node attributes in a single object and allows for straightforward computation of network measures and network visualizations in later analyses.
 
-w.mtx <- matrix(c(0,5,2,1,2,
-                  4,0,0,3,2,
-                  2,2,0,4,3,
-                  1,2,5,0,3,
-                  1,1,5,4,0),
-                nrow=5,ncol=5,byrow=TRUE,
-                dimnames = list(c('A','B','C','D','E'),c('A','B','C','D','E')))
-w.mtx
 
-# igraph object
-w.grph <- graph_from_adjacency_matrix(w.mtx,weighted = TRUE)
-w.grph
-plot.igraph(w.grph) # a fully connected network
-plot(w.grph,
-     edge.width=E(w.grph)$weight, 
-     main="weights visible", 
-     edge.curved=c(rep(0.1, 19))
-     ) # With some ties stronger than others
+```{r check, include=FALSE}
+dim(net)
+dim(attr)
 
-# You decide that at least a 4 needs to be given for a tie to exist
-# Let's keep only strong ties: 4 OR 5
-dich.mtx <- w.mtx
-dich.mtx[dich.mtx %in% 0:3] <- 0
-dich.mtx[dich.mtx %in% 4:5] <- 1
-dich.mtx
-
-dich.grph <- graph_from_adjacency_matrix(dich.mtx)
-dich.grph
-plot(dich.grph,
-     main='dichotomized version',  
-     edge.curved=c(rep(0.25, ecount(dich.grph)))
-     )
+g
+vcount(g)
+ecount(g)
 ```
 
-## Transposition (shifting rows for columns)
 
-```{r transformations 2}
+2. Justify what you do with isolates and multiple components if there are any. 
 
-# Reversing the direction of the ties
-# Useful depending on the data collection procedure
-(dich.mtx.t <- t(dich.mtx))
-dich.grph.t <- graph_from_adjacency_matrix(dich.mtx.t)
-plot(dich.grph.t,main='transposed version', 
-     edge.curved=c(rep(0.25, ecount(dich.grph))))
+```{r, include=FALSE}
+degree(g, mode = "all")
+components(g)
+
 ```
 
-## Symmetrization (from directed to undirected network)
+```{r fig.cap="Visualization of the Lazega Lawyers advice network showing a single connected component.", fig.width=5, fig.height=5}
 
-```{r transformations 3}
-(sym.mtx.weak <- symmetrize(dich.mtx,rule='weak')) # asymmetric ties kept (max-symmetrizing)
-(sym.mtx.stro <- symmetrize(dich.mtx,rule='strong')) # only mutual ties are kept (min-symmetrizing)
+plot(
+  g,
+  vertex.label = NA,
+  vertex.size = 4,
+  edge.arrow.size = 0.2,
+  edge.color = "gray70",
+  layout = layout_with_fr(g)
+)
 
-
-# Visualize the adjacency matrix
-plt1 <- sym.mtx.weak |> 
-  reshape2::melt() |> 
-ggplot2::ggplot(ggplot2::aes(x=Var1,y=Var2,fill=value |> as.factor()))+
-  ggplot2::geom_tile()+
-  ggplot2::labs(title='Visualise weak symmerization', x=NULL, y=NULL)+
-  ggplot2::scale_fill_manual(values=c('white','steelblue', "lightgray"), name='Contact', labels=c('No','Yes', NA))+
-  ggplot2::theme_minimal()
-
-# Visualize the adjacency matrix
-plt2 <- sym.mtx.stro |> 
-  reshape2::melt() |> 
-ggplot2::ggplot(ggplot2::aes(x=Var1,y=Var2,fill=value |> as.factor()))+
-  ggplot2::geom_tile()+
-  ggplot2::labs(title='Visualise strong symmetrization', x=NULL, y=NULL)+
-  ggplot2::scale_fill_manual(values=c('white','steelblue', "lightgray"), name='Contact', labels=c('No','Yes', NA))+
-  ggplot2::theme_minimal()
-
-gridExtra::grid.arrange(plt1, plt2, ncol=2)
-
-# The function removes the nodes' names
-dimnames(sym.mtx.weak) <- list(c('A','B','C','D','E'),c('A','B','C','D','E'))
-dimnames(sym.mtx.stro) <- list(c('A','B','C','D','E'),c('A','B','C','D','E'))
-
-# Convert into igraph objects
-sym.grph.weak <- graph_from_adjacency_matrix(sym.mtx.weak,mode='undirected') # notice the argument: mode="undirected"
-sym.grph.stro <- graph_from_adjacency_matrix(sym.mtx.stro,mode='undirected') # notice the argument: mode="undirected"
-
-par(mfrow=c(1,2)) # Two plots side to side
-plot.igraph(sym.grph.weak,main='Max-symmetrized')
-plot.igraph(sym.grph.stro,main='Min-symmetrized')
-par(mfrow=c(1,1))
 ```
+
+Figure 1 we checked the network for isolates and multiple components. The degree distribution shows that all nodes have at least one tie, so there are no isolates in the network. In addition, the network consists of a single connected component including all 71 nodes. Therefore, no nodes or components were removed, and the network was analyzed in its original form.
+
+
+3. Report and interpret the density of your network. Create a table that contains further descriptive network statistics. Please include average degree (in-degree and out-degree if both are relevant), standard deviation of degree (in-degrees and out-degrees), reciprocity, and transitivity. 
+
+
+```{r, include=FALSE}
+density_g <- edge_density(g)
+density_g
+
+```
+
+```{r, include=FALSE}
+in_deg  <- degree(g, mode = "in")
+out_deg <- degree(g, mode = "out")
+
+mean_in_deg  <- mean(in_deg)
+mean_out_deg <- mean(out_deg)
+
+sd_in_deg  <- sd(in_deg)
+sd_out_deg <- sd(out_deg)
+```
+
+
+```{r, include=FALSE}
+recip <- reciprocity(g)
+recip
+```
+
+
+```{r, include=FALSE}
+trans <- transitivity(g, type = "global")
+trans
+```
+
+
+
+
+```{r include=TRUE}
+
+
+stats_table <- data.frame(
+  Measure = c(
+    "Density",
+    "Average in-degree",
+    "Average out-degree",
+    "SD in-degree",
+    "SD out-degree",
+    "Reciprocity",
+    "Transitivity"
+  ),
+  Value = c(
+    density_g,
+    mean_in_deg,
+    mean_out_deg,
+    sd_in_deg,
+    sd_out_deg,
+    recip,
+    trans
+  )
+)
+
+knitr::kable(
+  stats_table,
+  digits = 3,
+  caption = "Descriptive network statistics for the Lazega Lawyers advice network"
+)
+
+
+```
+
+
+The density of the Lazega Lawyers advice network is 0.179. This means that approximately 18% of all possible advice ties between lawyers are present in the network. In other words, the network is relatively sparse, since most possible advice relationships do not occur. This is expected in a professional setting, where lawyers usually seek advice from a limited number of colleagues rather than from everyone in the firm. Even with the low density, the average in-degree and out-degree are both about 12.56, indicating that, on average, each lawyer gives advice to and receives advice from around twelve other lawyers. The relatively high standard deviations of in-degree and out-degree suggest substantial variation in advice activity, meaning that some lawyers are much more central in the advice network than others. The reciprocity of the network is 0.392, which indicates that a considerable share of advice ties are mutual, but that many advice relationships remain asymmetric. This is consistent with hierarchical or expertise-based advice seeking. The transitivity value of 0.479 suggests a moderate tendency toward triadic closure, meaning that lawyers who share advice partners are relatively likely to be connected to each other as well. The network shows a sparse but structured pattern of advice relations, with clear differences in individual connectivity and a moderate level of reciprocity and clustering.
+
+
+4 Create a graph of the degree (out-degree and in-degree if they are relevant) distributions
+in your network. What do you observe? What do you imply from the observed degree
+distributions? 
+
+
+
+
+
+
+```{r include=TRUE, fig.cap="Degree distributions of the Lazega Lawyers advice network. The top panel shows the in-degree distribution and the bottom panel shows the out-degree distribution."}
+
+deg_in_df <- data.frame(in_degree = in_deg)
+deg_out_df <- data.frame(out_degree = out_deg)
+
+ggplot(deg_in_df, aes(x = in_degree)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "black") +
+  labs(
+    title = "In-degree distribution of the advice network",
+    x = "In-degree",
+    y = "Number of lawyers"
+  ) +
+  theme_minimal()
+
+ggplot(deg_out_df, aes(x = out_degree)) +
+  geom_histogram(binwidth = 1, fill = "darkorange", color = "black") +
+  labs(
+    title = "Out-degree distribution of the advice network",
+    x = "Out-degree",
+    y = "Number of lawyers"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+According to Figure 2, the in-degree distribution shows that most lawyers receive advice from a moderate number of colleagues, with values spread mainly across the lower and middle range of in-degrees. At the same time, a small number of lawyers receive advice from a much larger number of others, reaching relatively high in-degree values. This indicates that advice is not evenly distributed across the firm. Instead, some lawyers occupy more prominent positions as advice providers, while most play a more peripheral or intermediate role in terms of receiving advice. 
+According to Figure 3, the out-degree distribution displays a similar pattern of variation. Most lawyers seek advice from several colleagues, but there is noticeable heterogeneity in advice-seeking behavior. A few lawyers have very high out-degree values, meaning that they actively consult many others, whereas most lawyers remain within a moderate range. This suggests differences in how individuals use advice relationships, possibly reflecting variation in experience, uncertainty, or role within the organization.
+The degree distributions imply that the advice network is structured around differentiated roles rather than uniform interaction patterns. While most lawyers participate in advice exchanges at moderate levels, a limited number of individuals stand out either as key advice providers or as highly active advice seekers. This pattern is consistent with informal hierarchies and specialization commonly found in professional organizations.
+
+
+
+
+5. Create a formatted table that contains descriptive information for node level variables
+(such as gender, ethnicity, smoking behavior, or anything you have in the selected data).
+
+
+
+```{r, include=TRUE}
+
+# Create descriptive statistics for node-level variables
+
+node_descriptives <- data.frame(
+  Variable = c(
+    "Gender (mean)",
+    "Status (mean)",
+    "Office (mean)",
+    "Age (mean)",
+    "Years in firm (mean)"
+  ),
+  Value = c(
+    mean(attr$gender),
+    mean(attr$status),
+    mean(attr$office),
+    mean(attr$age),
+    mean(attr$years_firm)
+  )
+)
+
+knitr::kable(
+  node_descriptives,
+  digits = 2,
+  caption = "Descriptive statistics for node-level attributes in the Lazega Lawyers network"
+)
+
+```
+
+Table 3 presents descriptive information for selected node-level attributes in the Lazega Lawyers network. The variables gender, status, and office are categorical variables that are numerically coded in the dataset. Therefore, their reported mean values summarize the distribution of categories in the sample rather than having a direct substantive interpretation. These values provide a general overview of how individuals are distributed across the coded categories. Age and years in firm describe individual characteristics related to experience and tenure within the organization. While age is also coded numerically in the dataset, its reported mean should be interpreted with caution due to the coding scheme used. Years in firm reflects the average tenure of lawyers in the firm and provides insight into the overall level of organizational experience among network members.
+
+
+6. Taking into consideration network size, select a form of visualization that could be
+meaningful. Visualize your network and color the nodes according to a selected nodevariable. 
+
+```{r fig.cap="Visualization of the Lazega Lawyers advice network. Nodes are colored according to organizational status (partner vs associate)."}
+
+# Set colors based on status
+# Assuming: 1 = associate, 2 = partner (numeric coding)
+V(g)$color <- ifelse(V(g)$status == 2, "firebrick", "steelblue")
+
+# Plot the network
+plot(
+  g,
+  vertex.label = NA,
+  vertex.size = 5,
+  edge.arrow.size = 0.3,
+  edge.color = "gray70",
+  layout = layout_with_fr(g),
+  main = "Lazega Lawyers advice network"
+)
+
+legend(
+  "bottomleft",
+  legend = c("Associate", "Partner"),
+  col = c("steelblue", "firebrick"),
+  pch = 19,
+  bty = "n"
+)
+
+```
+
+
+Figure 4 presents a visualization of the Lazega Lawyers advice network using a force-directed layout. Given the size of the network, this layout is appropriate because it highlights the overall structure of advice relations without overcrowding the figure. Nodes that are more strongly connected are positioned closer together, while less connected nodes appear more peripheral.
+Nodes are colored according to organizational status, with associates shown in blue and partners shown in red. The visualization suggests that partners tend to be more centrally located within the network, whereas associates are more frequently found at the periphery. This pattern indicates that partners play a more prominent role in the advice structure of the firm and are more likely to be consulted by others.
+At the same time, the figure shows that advice relations are not strictly divided by status. Several associates are also embedded in the central part of the network, and some partners appear in less central positions. This indicates that advice-seeking is influenced not only by formal status but also by individual expertise and informal relationships within the firm.
+
+7. Check assortativity in the network by a measure you select. What do you observe? Provide
+an interpretation of your findings. What kind of theoretical arguments could possibly
+explain your results?
+
+```{r, include=FALSE}
+
+# Assortativity by organizational status (partner vs associate)
+assort_status <- assortativity_nominal(
+  g,
+  as.factor(V(g)$status),
+  directed = TRUE
+)
+
+assort_status
+```
+
+```{r, include=TRUE}
+assort_table <- data.frame(
+  Measure = "Assortativity by status",
+  Value = assort_status
+)
+
+knitr::kable(
+  assort_table,
+  digits = 3,
+  caption = "Assortativity of the Lazega Lawyers advice network by organizational status"
+)
+
+
+```
+
+
+Assortativity by organizational status was examined using a nominal assortativity coefficient. Like show in Table 4 the assortativity value is 0.087, indicating a very weak tendency for lawyers to form advice ties with others of the same organizational status. This suggests that advice-seeking is not strongly driven by status similarity and frequently occurs across status boundaries.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+8. And finally, a thought exercise. Assume that the robustness or vulnerability of the network
+is examined. Try to come up with a practical issue for which robustness or vulnerability
+could be important. Choose a measurement of robustness / vulnerability and argue for the
+usefulness of your measure. Speculate about some implications for the concrete network
+
+
+
+The robustness or vulnerability of a network can be highly relevant in organizational settings, particularly when the network plays an important role in information flow and decision-making. In the context of the Lazega Lawyers advice network, robustness is important because advice relationships help distribute knowledge, experience, and professional guidance across the firm. If the network is vulnerable, the removal or absence of certain key individuals could significantly disrupt the flow of advice. A practical issue where robustness matters is the temporary or permanent loss of senior lawyers, for example due to retirement, illness, or departure from the firm. If advice relations are highly concentrated around a small number of central actors, the network may be vulnerable to such losses. In contrast, a more robust network would continue to function relatively well even if one or several central individuals were removed. One useful way to assess vulnerability is to focus on node centrality, particularly degree centrality or betweenness centrality. These measures help identify key individuals who either receive advice from many others or act as bridges between different parts of the network. If the network relies heavily on a small number of highly central nodes, it is more vulnerable because removing these nodes would likely fragment the network or substantially increase distances between remaining actors.
+
+Applied to the Lazega Lawyers network, the observed degree distributions suggest that some lawyers play more prominent roles as advice providers or seekers. This implies that the network may be moderately vulnerable to the removal of these key individuals. If highly consulted partners were no longer available, associates might lose access to important sources of advice, potentially slowing decision-making and reducing the overall efficiency of the firm.
+
+At the same time, the fact that the network consists of a single connected component and shows moderate clustering suggests some degree of robustness. Advice is not restricted to a single individual but is distributed across multiple actors. This redundancy in advice ties may help mitigate the impact of losing any one lawyer.
+
+Examining robustness and vulnerability provides insight into how resilient the advice network is to disruptions and highlights the organizational importance of maintaining multiple advice pathways rather than relying on a small number of central actors.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
