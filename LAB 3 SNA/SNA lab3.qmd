@@ -32,7 +32,7 @@ library(dplyr)
 library(tidyr)
 
 
-load("~/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/PairB.RData")
+load("~/GitHub/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/PairB.RData")
 
 gender <- student_vars$boy
 
@@ -191,101 +191,141 @@ knitr::kable(results_fmt, booktabs = TRUE,
 
 ```{r, include=FALSE}
 
-
-
-
-# Build networks
+# 1) network objects
 friendnet <- network(friends,  directed = TRUE, matrix.type = "adjacency")
 likenet   <- network(liking,   directed = TRUE, matrix.type = "adjacency")
 popnet    <- network(popular,  directed = TRUE, matrix.type = "adjacency")
 
-# Gender attribute
-friendnet %v% "gender" <- gender_lab
-likenet   %v% "gender" <- gender_lab
-popnet    %v% "gender" <- gender_lab
+# 2) gender attribute
+gender_clean <- as.character(gender_lab)
 
-# Model specification
-form <- ~ edges + mutual + nodematch("gender") + gwesp(0.7, fixed = TRUE) + twopath + gwidegree(0.7, fixed = TRUE)
+stopifnot(length(gender_clean) == network.size(friendnet))
+stopifnot(length(gender_clean) == network.size(likenet))
+stopifnot(length(gender_clean) == network.size(popnet))
 
+friendnet %v% "gender" <- gender_clean
+likenet   %v% "gender" <- gender_clean
+popnet    %v% "gender" <- gender_clean
+
+# 3) model specification (as required)
+mod_friend <- friendnet ~ edges + mutual + nodematch("gender") +
+  gwesp(0.7, fixed = TRUE) + twopath + gwidegree(0.7, fixed = TRUE)
+
+mod_like <- likenet ~ edges + mutual + nodematch("gender") +
+  gwesp(0.7, fixed = TRUE) + twopath + gwidegree(0.7, fixed = TRUE)
+
+mod_pop <- popnet ~ edges + mutual + nodematch("gender") +
+  gwesp(0.7, fixed = TRUE) + twopath + gwidegree(0.7, fixed = TRUE)
+
+# 4) control (prof email), with smaller gain to reduce exploding estimates
 ctrl <- control.ergm(
-  MCMLE.maxit = 30,
-  MCMC.interval = 4096,
-  MCMC.samplesize = 4096,
+  main.method = "Stochastic-Approximation",
+  SA.initial_gain = 0.05,
   seed = 123
 )
 
-m_friend <- ergm(friendnet ~ form, control = ctrl)
-m_like   <- ergm(likenet   ~ form, control = ctrl)
-m_pop    <- ergm(popnet    ~ form, control = ctrl)
+m_friend <- ergm(mod_friend, control = ctrl)
+m_like   <- ergm(mod_like,   control = ctrl)
+m_pop    <- ergm(mod_pop,    control = ctrl)
 
-p_stars <- function(p){
-  ifelse(p < 0.001, "***",
-  ifelse(p < 0.01,  "**",
-  ifelse(p < 0.05,  "*",
-  ifelse(p < 0.1,   "·", ""))))
+# 5) extract results for a single comparison table
+fmt_num <- function(x){
+  ifelse(is.infinite(x), ifelse(x > 0, "Inf", "-Inf"),
+  ifelse(is.na(x), NA_character_,
+  ifelse(abs(x) >= 1e6, format(x, scientific = TRUE, digits = 3),
+         sprintf("%.3f", x))))
 }
 
-one_model <- function(m, name){
-  co <- as.data.frame(summary(m)$coefs)
-  co$term <- rownames(co)
-  rownames(co) <- NULL
-  co %>%
-    transmute(
-      term,
-      model = name,
-      estimate = Estimate,
-      se = `Std. Error`,
-      p = `Pr(>|z|)`,
-      cell = sprintf("%.3f (%.3f)%s", estimate, se, p_stars(p))
-    )
+extract_coefs <- function(m, name){
+  co <- summary(m)$coefs
+  if (is.null(co) || length(co) == 0 || nrow(as.matrix(co)) == 0) {
+    return(dplyr::tibble(Term = character(), Model = character(), Cell = character()))
+  }
+
+  co <- as.matrix(co)
+  terms <- rownames(co)
+  est <- co[, 1]
+  se  <- if (ncol(co) >= 2) co[, 2] else rep(NA_real_, length(est))
+
+  dplyr::tibble(
+    Term  = terms,
+    Model = name,
+    Cell  = ifelse(is.na(se),
+                   fmt_num(est),
+                   paste0(fmt_num(est), " (", fmt_num(se), ")"))
+  )
 }
+
+# build long table
+tbl_q6_long <- dplyr::bind_rows(
+  extract_coefs(m_friend, "Friendship"),
+  extract_coefs(m_like,   "Liking"),
+  extract_coefs(m_pop,    "Popularity")
+)
+
+# force a complete skeleton so the table is never empty
+all_terms <- c(
+  "edges",
+  "mutual",
+  "nodematch.gender",
+  "gwesp.OTP.fixed.0.7",
+  "gwesp.fixed.0.7",
+  "twopath",
+  "gwideg.fixed.0.7",
+  "gwidegree.fixed.0.7"
+)
+
+skeleton <- tidyr::expand_grid(
+  Term = all_terms,
+  Model = c("Friendship", "Liking", "Popularity")
+)
+
+tbl_q6 <- skeleton %>%
+  dplyr::left_join(tbl_q6_long, by = c("Term","Model")) %>%
+  tidyr::pivot_wider(names_from = Model, values_from = Cell)
+
+# clean term names
+term_map <- c(
+  "edges" = "Edges",
+  "mutual" = "Mutual",
+  "nodematch.gender" = "Gender homophily (nodematch)",
+  "gwesp.OTP.fixed.0.7" = "Transitive closure (GWESP 0.7)",
+  "gwesp.fixed.0.7" = "Transitive closure (GWESP 0.7)",
+  "twopath" = "Two-path",
+  "gwideg.fixed.0.7" = "Preferential attachment (GW indegree 0.7)",
+  "gwidegree.fixed.0.7" = "Preferential attachment (GW indegree 0.7)"
+)
+
+tbl_q6 <- tbl_q6 %>%
+  dplyr::mutate(Term = dplyr::recode(Term, !!!term_map)) %>%
+  dplyr::distinct(Term, .keep_all = TRUE)
 
 term_map <- c(
   "edges" = "Edges",
   "mutual" = "Mutual",
   "nodematch.gender" = "Gender homophily (nodematch)",
+  "gwesp.OTP.fixed.0.7" = "Transitive closure (GWESP 0.7)",
   "gwesp.fixed.0.7" = "Transitive closure (GWESP 0.7)",
   "twopath" = "Two-path",
+  "gwideg.fixed.0.7" = "Preferential attachment (GW indegree 0.7)",
   "gwidegree.fixed.0.7" = "Preferential attachment (GW indegree 0.7)"
 )
 
-tbl_q6 <- bind_rows(
-  one_model(m_friend, "Friendship"),
-  one_model(m_like,   "Liking"),
-  one_model(m_pop,    "Popularity")
-) %>%
-  mutate(Term = dplyr::recode(term, !!!term_map)) %>%
-  select(Term, model, cell) %>%
-  pivot_wider(names_from = model, values_from = cell) %>%
-  arrange(match(Term, unname(term_map)))
-
+tbl_q6 <- tbl_q6 |>
+  dplyr::mutate(Term = dplyr::recode(Term, !!!term_map))
 ```
 
 
 
 ```{r}
-#| label: tbl-q5-network-comparison
-#| tbl-cap: "Comparison of network properties across the three directed nomination networks (friendship, liking, popularity)."
+
+#| label: tbl-q6-ergm-comparison
+#| tbl-cap: "ERGM results for friendship, liking, and popularity networks. Entries show estimate (SE). Models were estimated using stochastic approximation due to degeneracy issues in MPLE or MCMLE."
 #| echo: false
 #| message: false
 #| warning: false
 
-results_fmt <- results |>
-  dplyr::mutate(dplyr::across(where(is.numeric), ~ round(.x, 3))) |>
-  dplyr::mutate(network = tools::toTitleCase(network))
 
-knitr::kable(
-  results_fmt,
-  booktabs = TRUE,
-  col.names = c(
-    "Network",
-    "Density",
-    "Reciprocity",
-    "Transitivity",
-    "Gender homophily",
-    "Indegree centralization"
-  )
-)
 ```
 
 
