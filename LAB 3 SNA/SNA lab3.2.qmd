@@ -38,7 +38,7 @@ load("~/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/PairB.RData")
 
 ```
 
-```{r,inclue=FALSE }
+```{r,include=FALSE }
 #| echo: false
 # check
 gender <- student_vars$boy
@@ -109,7 +109,7 @@ ls()
 
 ## 5. Descriptive comparison
 
-```{r, inclue=FALSE}
+```{r, include=FALSE }
 calc_net_stats <- function(adj, gender_vec){
 
   adj <- as.matrix(adj)
