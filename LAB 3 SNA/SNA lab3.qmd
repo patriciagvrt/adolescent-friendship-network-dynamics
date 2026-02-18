@@ -1,0 +1,362 @@
+---
+title: "SNA lab3"
+author: " $ patricia  givort cruz cabral"
+date: "2026-02-15"
+format:
+  pdf:
+    number-sections: false
+    fig-cap-location: top
+    tbl-cap-location: top
+    fig-numbering: true
+    tbl-numbering: true
+    toc: true
+    toc-depth: 2
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Introduction
+```{r setup 1, include=FALSE}
+library(network)		# network data storage
+library(sna)			# network analysis routines
+library(latticeExtra)	# for nicer convergence & gof plots
+library(ergm)			# fitting & evaluating ERGMs
+
+library(statnet)
+library(dplyr)
+library(tidyr)
+library(knitr)
+
+load("~/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/s50.RData")
+
+friendship_mat  <- as.matrix(s501)
+liking_mat      <- as.matrix(s502)
+popularity_mat  <- as.matrix(s503)
+
+diag(friendship_mat) <- 0
+diag(liking_mat) <- 0
+diag(popularity_mat) <- 0
+
+friendship_mat <- 1 * (friendship_mat > 0)
+liking_mat     <- 1 * (liking_mat > 0)
+popularity_mat <- 1 * (popularity_mat > 0)
+
+gender <- s50s[, 2]                 # V2, como a gente escolheu
+gender <- as.character(gender)      # vetor simples
+gender <- factor(gender)            # categórico para nodematch
+
+stopifnot(length(gender) == nrow(friendship_mat))
+```
+>> 
+
+
+
+
+> This assignment is about explaining differences in social standing within an adolescent peer group by modelling three directed nomination networks, friendship, liking (acceptance), and popularity (prestige). The main mechanism of interest is preferential attachment, also called the Matthew effect, meaning that students who already receive many nominations tend to receive even more, which creates hubs and hierarchy in indegree. The goal is to compare how strong this mechanism is across the three networks, while controlling for other common processes in adolescent networks, such as reciprocity, gender homophily, and transitive closure.
+
+## 1. Explain your expectation!
+
+
+> I would expect preferential attachment to be stronger for popularity nominations than for liking nominations. Popularity nominations are closer to a shared status ranking, meaning that once a student is widely perceived as high status, additional students may be more likely to nominate them because popularity is socially visible and reinforced by group consensus. This creates cumulative advantage, where being popular makes it easier to become even more popular. Liking nominations reflect acceptance and personal affinity, which can be more dispersed across many classmates and limited by individual preferences, so they should, on average, generate less extreme indegree concentration than popularity nominations.
+
+## 2. Friendship  expectation
+
+
+> Friendship could plausibly fall between liking and popularity in terms of preferential attachment, because friendship combines affective closeness, which relates to liking, and social visibility, which can relate to popularity. However, I would not treat the middle position as guaranteed. Friendship nominations are often constrained by reciprocity and time, you can only maintain a limited number of friendships, and friendships tend to be organized in clustered groups. Those constraints can reduce the extent of hub formation compared to popularity, and sometimes even compared to liking if liking is widespread but friendship is clique based. So my expectation is that friendship will show some preferential attachment, but its relative strength depends on how much the class organizes friendships around a few highly central students versus around multiple local clusters.
+
+
+## 3. Control mechnisms
+
+> Gender homophily matters because adolescents often form ties within same gender groups. If you ignore this, a student might look like a “hub” simply because they are located inside a large same gender cluster with many within group nominations. The model could then attribute that concentration of nominations to preferential attachment or “status”, when it is actually driven by gender based sorting.
+
+> Reciprocity matters because many adolescent relations are mutual, especially friendship and often liking. If reciprocity is not controlled for, high indegree can partly be produced by a simple exchange mechanism, I nominate you because you nominated me. That can inflate indegree for some students without implying that they have higher status in the group.
+
+> Transitive closure matters because adolescents tend to form clustered groups, where friends of friends or liked people of liked people become connected. This closure creates local concentration of nominations inside cohesive groups, which again can generate unequal indegrees even without any “rich get richer” mechanism. If you do not include closure, the model may incorrectly interpret clustered structure as evidence of hierarchy.
+
+> So, including these three mechanisms makes the hierarchy term cleaner. It forces the model to explain indegree inequality after accounting for sorting by gender, direct reciprocation, and group level closure. That improves causal interpretability and reduces confounding.
+
+
+
+
+
+
+
+
+
+
+## 4. Hierarchy index
+
+
+> I use the Gini coefficient of indegree as an index of hierarchy and hub formation. For each student, indegree counts how many nominations they receive, so differences in indegree directly represent differentiation in social standing within the group. The indegree Gini coefficient summarizes how unequal this distribution is across individuals. It equals 0 when everyone receives the same number of nominations and increases as nominations become more concentrated on a smaller subset of students. This makes it a natural measure of hierarchy, because strong hub formation implies that a few students attract a disproportionate share of incoming ties. Another advantage is that the Gini coefficient is comparable across networks that can differ in overall density, since it focuses on inequality in the indegree distribution rather than on the total number of ties.
+
+
+
+
+
+
+
+
+
+## 5. Descriptive comparison
+
+```{r}
+#| label: ex5-table
+#| echo: false
+#| warning: false
+#| message: false
+
+indegree_vec <- function(A) colSums(A)
+
+gini <- function(x){
+  x <- as.numeric(x)
+  if(all(x == 0)) return(0)
+  x <- sort(x)
+  n <- length(x)
+  (2 * sum((1:n) * x)) / (n * sum(x)) - (n + 1) / n
+}
+
+density_dir <- function(A){
+  n <- nrow(A)
+  sum(A) / (n * (n - 1))
+}
+
+reciprocity_edgewise <- function(A){
+  if(sum(A) == 0) return(NA_real_)
+  sum(A * t(A)) / sum(A)
+}
+
+transitive_closure_rate <- function(A){
+  two_paths <- A %*% A
+  diag(two_paths) <- 0
+  total_two_paths <- sum(two_paths)
+  if(total_two_paths == 0) return(NA_real_)
+  closed_two_paths <- sum(two_paths[A == 1])
+  closed_two_paths / total_two_paths
+}
+
+same_gender_share <- function(A, gender_vec){
+  ties <- which(A == 1, arr.ind = TRUE)
+  if(nrow(ties) == 0) return(NA_real_)
+  mean(gender_vec[ties[,1]] == gender_vec[ties[,2]])
+}
+
+summarise_net <- function(A, gender_vec){
+  data.frame(
+    density = density_dir(A),
+    reciprocity = reciprocity_edgewise(A),
+    transitivity = transitive_closure_rate(A),
+    gender_homophily = same_gender_share(A, gender_vec),
+    indegree_gini = gini(indegree_vec(A))
+  )
+}
+
+results <- rbind(
+  friendship = summarise_net(friendship_mat, gender),
+  liking     = summarise_net(liking_mat, gender),
+  popularity = summarise_net(popularity_mat, gender)
+)
+
+knitr::kable(
+  round(results, 3),
+  caption = "Descriptive comparison of friendship, liking, and popularity networks in terms of density, reciprocity, transitivity, gender homophily, and indegree Gini (hierarchy index)."
+)
+```
+
+> In Table 1, the three nomination networks show similar overall density, ranging from 0.046 in friendship to 0.050 in popularity, indicating that all three networks are relatively sparse and comparable in baseline connectivity. Reciprocity differs more clearly across networks: popularity is the most reciprocal (0.738), followed by friendship (0.690), while liking shows the lowest reciprocity (0.603). Transitivity is highest in the popularity network (0.489), compared with friendship (0.387) and liking (0.373), suggesting stronger local closure and clustered structure in popularity nominations. Gender homophily is substantial in all three networks, with the highest value in liking (0.647), followed by popularity (0.607) and friendship (0.575). This indicates that same gender nominations are common across relation types, and especially pronounced for liking nominations. Finally, using indegree Gini as the hierarchy index, indegree inequality is highest for liking (0.369) and friendship (0.362), and somewhat lower for popularity (0.342). In this dataset, hub formation and hierarchical differentiation in received nominations therefore appears strongest for liking, slightly weaker for friendship, and weakest for popularity, even though popularity shows the greatest transitive closure and reciprocity.
+
+
+
+
+
+
+
+
+
+
+## 6.
+
+```{r}
+#| label: q6-ergm
+#| echo: false
+#| warning: false
+#| message: false
+
+library(network)
+library(sna)
+library(ergm)
+library(knitr)
+
+friendnet <- network(friendship_mat, directed = TRUE, matrix.type = "adjacency")
+likenet   <- network(liking_mat,     directed = TRUE, matrix.type = "adjacency")
+popnet    <- network(popularity_mat, directed = TRUE, matrix.type = "adjacency")
+
+gender_chr <- unname(as.character(gender))
+
+friendnet %v% "gender" <- gender_chr
+likenet   %v% "gender" <- gender_chr
+popnet    %v% "gender" <- gender_chr
+
+terms <- ~ edges +
+  mutual +
+  nodematch("gender") +
+  gwesp(0.7, fixed = TRUE) +
+  twopath +
+  gwidegree(0.7, fixed = TRUE)
+
+ctrl <- control.ergm(seed = 1234)
+
+fit_friend <- ergm(update(terms, friendnet ~ .), control = ctrl)
+fit_like   <- ergm(update(terms, likenet   ~ .), control = ctrl)
+fit_pop    <- ergm(update(terms, popnet    ~ .), control = ctrl)
+
+get_tab <- function(fit, name){
+  co <- as.data.frame(summary(fit)$coefficients)
+  co$term <- rownames(co)
+  rownames(co) <- NULL
+  co <- co[, c("term", "Estimate", "Std. Error", "Pr(>|z|)")]
+  names(co)[2:4] <- paste0(names(co)[2:4], "_", name)
+  co
+}
+
+t1 <- get_tab(fit_friend, "friendship")
+t2 <- get_tab(fit_like,   "liking")
+t3 <- get_tab(fit_pop,    "popularity")
+
+tab <- Reduce(function(x, y) merge(x, y, by = "term", all = TRUE), list(t1, t2, t3))
+
+tab_num <- tab
+for(j in 2:ncol(tab_num)) tab_num[[j]] <- round(as.numeric(tab_num[[j]]), 3)
+
+library(kableExtra)
+
+tab_num2 <- tab_num
+
+names(tab_num2) <- gsub("Estimate_friendship", "Est_F", names(tab_num2), fixed = TRUE)
+names(tab_num2) <- gsub("Std. Error_friendship", "SE_F", names(tab_num2), fixed = TRUE)
+names(tab_num2) <- gsub("Pr(>|z|)_friendship", "p_F", names(tab_num2), fixed = TRUE)
+
+names(tab_num2) <- gsub("Estimate_liking", "Est_L", names(tab_num2), fixed = TRUE)
+names(tab_num2) <- gsub("Std. Error_liking", "SE_L", names(tab_num2), fixed = TRUE)
+names(tab_num2) <- gsub("Pr(>|z|)_liking", "p_L", names(tab_num2), fixed = TRUE)
+
+names(tab_num2) <- gsub("Estimate_popularity", "Est_P", names(tab_num2), fixed = TRUE)
+names(tab_num2) <- gsub("Std. Error_popularity", "SE_P", names(tab_num2), fixed = TRUE)
+names(tab_num2) <- gsub("Pr(>|z|)_popularity", "p_P", names(tab_num2), fixed = TRUE)
+
+kable(
+  tab_num2,
+  format = "latex",
+  booktabs = TRUE,
+  caption = "ERGM results for friendship, liking, and popularity networks (edges, mutual, nodematch(gender), gwesp(0.7), twopath, gwidegree(0.7))."
+) |>
+  kable_styling(
+    latex_options = c("hold_position", "scale_down"),
+    font_size = 8
+  )
+```
+
+
+
+
+
+
+
+
+
+
+## 7.
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 8.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 9.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 10.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 11.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 12.
