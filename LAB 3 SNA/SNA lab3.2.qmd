@@ -32,7 +32,7 @@ library(dplyr)
 library(tidyr)
 
 
-load("~/GitHub/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/PairB.RData")
+load("~/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/PairB.RData")
 
 
 
@@ -190,22 +190,6 @@ knitr::kable(results_fmt, booktabs = TRUE,
 
 
 
-```{r q6-try-mcmle, include=FALSE}
-rhs <- ~ edges + mutual + nodematch("gender") +
-  gwesp(0.7, fixed = TRUE) + twopath + gwidegree(0.7, fixed = TRUE)
-
-ctrl_sa <- control.ergm(
-  main.method = "Stochastic-Approximation",
-  SA.initial_gain = 0.02,
-  SA.burnin = 2000,
-  seed = 123
-)
-
-m_friend <- ergm(update(friendnet ~ 1, rhs), control = ctrl_sa)
-m_like   <- ergm(update(likenet   ~ 1, rhs), control = ctrl_sa)
-m_pop    <- ergm(update(popnet    ~ 1, rhs), control = ctrl_sa)
-
-```
 
 
 
