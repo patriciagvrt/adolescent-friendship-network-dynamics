@@ -49,6 +49,9 @@ gender_lab <- factor(ifelse(gender == 1, "boy", "girl"))
 table(gender_lab)
 ls()
 
+
+
+
 ```
 
 
