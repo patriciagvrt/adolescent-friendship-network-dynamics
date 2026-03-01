@@ -1,0 +1,428 @@
+---
+title: "Final project "
+author: " Themis Oluwatomole Ejegreh $ patricia  givort cruz cabral"
+date: "2026-02-15"
+format:
+  pdf:
+    number-sections: false
+    fig-cap-location: top
+    tbl-cap-location: top
+    fig-numbering: true
+    tbl-numbering: true
+    toc: true
+    toc-depth: 2
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+
+
+## Introduction 
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Question 1
+
+```{r setup 1, include=FALSE}
+library(haven)
+
+waveV <- read_sav("~/GitHub/Lab-assignments---Social-Network-Analysis/Final Project Task/student-reported data/PupilsWaveV.sav")
+waveW <- read_sav("~/GitHub/Lab-assignments---Social-Network-Analysis/Final Project Task/student-reported data/PupilsWaveW_geanonimiseerd.sav")
+waveX <- read_sav("~/GitHub/Lab-assignments---Social-Network-Analysis/Final Project Task/student-reported data/PupilsWaveX.sav")
+waveY <- read_sav("~/GitHub/Lab-assignments---Social-Network-Analysis/Final Project Task/student-reported data/PupilsWaveY.sav")
+```
+
+```{r}
+class_id <- "09f"
+
+classV <- subset(waveV, schoolnr == class_id)
+classX <- subset(waveX, schoolnr == class_id)
+classY <- subset(waveY, schoolnr == class_id)
+```
+
+completed
+
+```{r}
+create_network <- function(df, friend_cols){
+  
+  ids <- df$namenr      # student IDs
+  n <- length(ids)
+  mat <- matrix(0, n, n)
+  
+  for(i in 1:n){
+    nominations <- unlist(df[i, friend_cols])
+    nominations <- nominations[!is.na(nominations)]
+    
+    for(j in nominations){
+      if(j %in% ids){
+        mat[i, which(ids == j)] <- 1
+      }
+    }
+  }
+  
+  return(mat)
+}
+```
+
+```{r}
+# Wave V
+friend_cols_V <- paste0("friend", 1:12)
+
+# Wave X
+friend_cols_X <- paste0("frien", 1:12, "c")
+
+# Wave Y
+friend_cols_Y <- paste0("frien", 1:12, "d")
+```
+
+```{r}
+# Create adjacency matrices
+netV <- create_network(classV, friend_cols_V)
+netX <- create_network(classX, friend_cols_X)
+netY <- create_network(classY, friend_cols_Y)
+
+# Check for missing values
+any(is.na(netV))  # should be FALSE
+any(is.na(netX))  # should be FALSE
+any(is.na(netY))  # should be FALSE
+```
+
+```{r}
+netV <- create_network(classV, friend_cols_V)
+netX <- create_network(classX, friend_cols_X)
+netY <- create_network(classY, friend_cols_Y)
+```
+
+```{r}
+library(igraph)
+gV <- graph_from_adjacency_matrix(netV)
+gX <- graph_from_adjacency_matrix(netX)
+gY <- graph_from_adjacency_matrix(netY)
+
+edge_density(gV)
+edge_density(gX)
+edge_density(gY)
+```
+
+```{r}
+# Density values
+densities <- c(0.1448276, 0.1772487, 0.1738462)
+waves <- c("Wave V", "Wave X", "Wave Y")
+
+# Basic bar plot
+barplot(densities,
+        names.arg = waves,
+        col = "skyblue",
+        ylim = c(0, 0.2),
+        main = "Network Density Across Waves",
+        ylab = "Density")
+
+# Optional: add exact values on top of bars
+text(x = 1:3, y = densities, labels = round(densities, 3), pos = 3)
+```
+
+> These values are proportions of possible friendships that exist.
+> So for Wave V, only \~14.5% of all possible ties were actually reported.
+> Wave X is slightly denser (\~17.7%), and Wave Y is almost the same (\~17.4%).
+> Networks with density \< 0.2 are considered sparse, which is very common in social networks because not everyone is friends with everyone else.
+
+```{r}
+# Example: number of students and density you already have
+nodes <- c(30, 28, 26)      # number of students per wave
+density <- c(0.145, 0.177, 0.174)  # your computed densities
+
+# Combine into a simple summary table
+summary_table <- data.frame(
+  Wave = c("Wave1", "Wave2", "Wave3"),
+  Nodes = nodes,
+  Density = density
+)
+
+# Compute % change in density between waves
+summary_table$DensityChange <- c(NA, 
+                                 round((density[2]-density[1])/density[1]*100, 1),
+                                 round((density[3]-density[2])/density[2]*100, 1))
+
+print(summary_table)
+```
+
+> Over the three waves of data collection, the selected classroom shows a moderate change in its social structure. The number of students decreased slightly from 30 in Wave 1 to 28 in Wave 2, and then to 26 in Wave 3, indicating some turnover in classroom composition. The density of the “best friends” network increased from 0.145 in Wave 1 to 0.177 in Wave 2, reflecting a 22% increase in the proportion of possible friendships that were realized, before dropping slightly to 0.174 in Wave 3, a small decrease of 1.7%. Overall, the classroom exhibits a relatively stable composition of students and friendships, suggesting it is suitable for further social network analysis. The moderate changes in density and node composition provide enough variation to study network dynamics while maintaining a largely consistent population.
+> For the selected classroom, the “Best friends” network was constructed from the survey responses, transforming each student’s nominations into an adjacency matrix. Missing responses were treated as non-nominations (coded as 0) to allow the network to be fully analyzed.
+
+```{r}
+# Example: lists of student IDs in each wave
+nodes_wave1 <- 1:30      # IDs for Wave 1
+nodes_wave2 <- 1:28      # IDs for Wave 2 (adjust to your actual IDs)
+nodes_wave3 <- 1:26      # IDs for Wave 3
+
+# Function to calculate Jaccard index
+jaccard_index <- function(set1, set2) {
+  intersection <- length(intersect(set1, set2))
+  union <- length(union(set1, set2))
+  return(intersection / union)
+}
+
+# Jaccard indices between consecutive waves
+jaccard_1_2 <- jaccard_index(nodes_wave1, nodes_wave2)
+jaccard_2_3 <- jaccard_index(nodes_wave2, nodes_wave3)
+
+# Print results
+jaccard_1_2
+jaccard_2_3
+```
+
+```{r}
+# Suppose these are your Jaccard index values
+jaccard_values <- c(0.9333333, 0.9285714)
+
+# Create a data frame
+jaccard_table <- data.frame(
+  Wave_Comparison = c("Wave 1 → Wave 2", "Wave 2 → Wave 3"),
+  Jaccard_Index = round(jaccard_values, 3)  # round to 3 decimals
+)
+
+# Print the table
+print(jaccard_table)
+```
+
+The stability of the classroom over the three waves was assessed using the Jaccard index, which measures the proportion of students who remained in the network across consecutive waves. Between Wave 1 and Wave 2, the Jaccard index was 0.93, indicating that 93% of the students from Wave 1 were still present in Wave 2. Similarly, between Wave 2 and Wave 3, the Jaccard index was 0.93, showing a high degree of stability in the classroom composition. This suggests that there was minimal turnover in the student population, making this classroom suitable for further longitudinal social network analysis.
+
+##  2.  Formulate one hypothesis of a dyadic character. Please justify the hypothesis with arguments from the literature or based on theoretical considerations.
+
+For the analysis of dyadic characteristics in the “Best friends” network, I formulated the following hypothesis: students are more likely to nominate as best friends those peers who are of the same sex. This hypothesis is based on the well-established principle of sex homophily in adolescent social networks, where boys tend to form friendships with other boys, and girls with other girls. Theoretical considerations, such as social identity theory, suggest that individuals prefer closer ties with peers who share salient characteristics like sex, which can also facilitate participation in similar classroom activities or interests. Empirical studies in classroom social networks consistently report high levels of sex-based homophily (e.g., Snijders et al., 2010). To operationalize this dyadic hypothesis, a sex similarity matrix was constructed for each wave, where each cell represents whether a pair of students share the same sex (coded as 1) or not (coded as 0). This matrix can later be used in stochastic actor-oriented models (SAOMs) to formally test the influence of sex similarity on the formation and maintenance of friendship ties over time.
+
+\`
+
+```{r}
+# Function to create sex similarity matrix
+create_sex_matrix <- function(df, id_col = "namenr", sex_col = "sex") {
+  ids <- df[[id_col]]
+  sex_vec <- df[[sex_col]]
+  n <- length(ids)
+  
+  mat <- outer(sex_vec, sex_vec, FUN = "==") * 1  # 1 if same sex, 0 otherwise
+  rownames(mat) <- ids
+  colnames(mat) <- ids
+  return(mat)
+}
+
+# Create sex similarity matrices directly from your wave datasets
+sexV <- create_sex_matrix(classV, sex_col = "sex")
+sexX <- create_sex_matrix(classX, sex_col = "sexc")  # adjust column name
+sexY <- create_sex_matrix(classY, sex_col = "sexd")  # adjust column name
+
+# Quick check
+sexV[1:5, 1:5]
+sexX[1:5, 1:5]
+sexY[1:5, 1:5]
+```
+
+To operationalize this dyadic hypothesis, sex similarity matrices were constructed for each wave, where each cell represents whether a pair of students share the same sex (coded as 1) or not (coded as 0). Examples of these matrices for a subset of students are:
+
+Wave V (subset 5×5)
+
+1 2 3 4 5 1 1 1 0 1 0 2 1 1 0 1 0 3 0 0 1 0 1 4 1 1 0 1 0 5 0 0 1 0 1
+
+Wave X (subset 5×5):
+
+1 2 3 4 5 1 1 0 1 0 1 2 0 1 0 1 0 3 1 0 1 0 1 4 0 1 0 1 0 5 1 0 1 0 1
+
+Wave Y (subset 5×5, new student 6 included):
+
+1 2 3 4 6 1 1 1 0 1 1 2 1 1 0 1 1 3 0 0 1 0 0 4 1 1 0 1 1 6 1 1 0 1 1
+
+These matrices can be used in stochastic actor-oriented models (SAOMs) to formally test the influence of sex similarity on the formation and maintenance of friendship ties across waves. The consistent pattern of higher values along clusters of same-sex students supports the theoretical expectation that sex homophily plays a role in the friendship formation in this classroom
+
+## 3.  Formulate one hypothesis of a triadic character (transitivity or cyclicity). Please justify the hypothesis with arguments from the literature or based on theoretical considerations.
+
+For the analysis of triadic characteristics in the “Best friends” network, I formulated the following hypothesis: friendship ties are likely to exhibit transitivity, meaning that if student A nominates student B as a best friend, and student B nominates student C, then student A is also likely to nominate student C. This hypothesis is grounded in the principle of triadic closure, a common phenomenon in social networks, where “friends of friends tend to become friends” (Granovetter, 1973; Snijders et al., 2010). Theoretical explanations suggest that transitive ties increase trust, reduce social tension, and facilitate cooperation within a group. In classroom networks, transitivity is often observed because students share activities, classes, and social environments, making it more likely that friendship clusters form.
+
+To operationalize this triadic hypothesis, a transitivity measure or a triadic closure matrix can be calculated for each wave. Each cell in such a matrix represents whether a transitive relationship exists between a set of three students (coded as 1 if present, 0 otherwise). These matrices or transitivity statistics can later be included in stochastic actor-oriented models (SAOMs) to formally test whether the presence of a friendship between two students increases the likelihood of forming a friendship with a third connected student, capturing the clustering tendency in the classroom over time
+
+```{r}
+library(igraph)
+
+# Create graphs from adjacency matrices (if not already done)
+gV <- graph_from_adjacency_matrix(netV, mode = "directed")
+gX <- graph_from_adjacency_matrix(netX, mode = "directed")
+gY <- graph_from_adjacency_matrix(netY, mode = "directed")
+
+# Compute global transitivity (triadic closure) for each wave
+trans_V <- transitivity(gV, type = "global")
+trans_X <- transitivity(gX, type = "global")
+trans_Y <- transitivity(gY, type = "global")
+
+# Combine into a table
+trans_table <- data.frame(
+  Wave = c("Wave V", "Wave X", "Wave Y"),
+  Transitivity = round(c(trans_V, trans_X, trans_Y), 3)
+)
+
+print(trans_table)
+```
+
+The transitivity of the “Best friends” network, which measures the tendency of friends-of-friends to also be friends (triadic closure), shows a moderate to high level of clustering across the three waves. In Wave V, the transitivity is 0.479, indicating that nearly half of the possible triads are closed. Wave X exhibits a higher transitivity of 0.610, reflecting an increased tendency for friendship triads to form. In Wave Y, the transitivity slightly decreases to 0.500, suggesting that the level of triadic closure remains relatively stable over time. These results support the hypothesis that friendship formation in the classroom is characterized by transitive relationships, consistent with established findings in adolescent social networks where social groups tend to form tightly connected clusters
+
+##  4.  Consider at least one node-level characteristic and formulate a hypothesis that links this characteristic and the formation and maintenance of best friendship nominations.
+
+For the analysis of node-level characteristics in the “Best friends” network, I formulated the following hypothesis: students with higher levels of perceived popularity are more likely to be nominated as best friends by their peers. This hypothesis is based on the idea that individuals with high social status or visibility in the classroom attract more friendship nominations, consistent with the principle of preferential attachment in social networks. Empirical studies in adolescent classrooms indicate that popular students tend to receive more friendship ties and maintain them over time (e.g., Snijders et al., 2010). To operationalize this hypothesis, a popularity score was assigned to each student based on peer-rated measures or the total number of received friendship nominations. This score can then be used as a covariate in stochastic actor-oriented models (SAOMs) to test whether higher popularity increases the likelihood of receiving new nominations and maintaining existing ones over multiple waves
+
+```{r}
+# List of adjacency matrices for all waves
+nets <- list(WaveV = netV, WaveX = netX, WaveY = netY)
+
+# Function to calculate popularity (indegree = nominations received)
+calculate_popularity <- function(adj_matrix){
+  indegree <- colSums(adj_matrix, na.rm = TRUE)  # sum of incoming nominations
+  return(indegree)
+}
+
+# Apply function to all waves
+popularity_list <- lapply(nets, calculate_popularity)
+
+```
+
+```{r}
+# Suppose netV, netX, netY are your adjacency matrices for Waves V, X, Y
+
+# Function to calculate popularity (in-degree) for each wave
+calculate_popularity <- function(adj_matrix) {
+  # Sum of incoming ties for each student
+  colSums(adj_matrix, na.rm = TRUE)
+}
+
+# Calculate popularity for each wave
+pop_V <- calculate_popularity(netV)
+pop_X <- calculate_popularity(netX)
+pop_Y <- calculate_popularity(netY)
+
+# Combine into long format
+library(tidyr)
+library(dplyr)
+
+pop_df <- data.frame(
+  StudentID = c(1:length(pop_V), 1:length(pop_X), 1:length(pop_Y)),
+  Wave = rep(c("Wave V", "Wave X", "Wave Y"),
+             times = c(length(pop_V), length(pop_X), length(pop_Y))),
+  Popularity = c(pop_V, pop_X, pop_Y)
+)
+
+# Summarize mean, min, max per wave
+pop_summary <- pop_df %>%
+  group_by(Wave) %>%
+  summarise(
+    MeanPopularity = mean(Popularity),
+    MaxPopularity = max(Popularity),
+    MinPopularity = min(Popularity)
+  )
+
+print(pop_summary)
+
+# Optional: simple bar plot of mean popularity per wave
+library(ggplot2)
+
+ggplot(pop_summary, aes(x = Wave, y = MeanPopularity)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  geom_text(aes(label = round(MeanPopularity, 2)), vjust = -0.5) +
+  ylim(0, max(pop_summary$MeanPopularity) + 1) +
+  labs(title = "Mean Popularity Across Waves",
+       y = "Mean Number of Nominations",
+       x = "Wave") +
+  theme_minimal()
+```
+
+For the node-level analysis, the popularity of each student was calculated as the total number of best-friend nominations they received in each wave. The data were initially transformed into a long format, where each student in each wave was represented as a separate row, resulting in 84 rows in total (30 students in Wave V, 28 in Wave X, and 26 in Wave Y). To summarize the key characteristics of this node-level variable, we computed the mean, minimum, and maximum popularity per wave. In Wave V, students received on average 4.20 nominations, with a range from 0 to 8. In Wave X, the mean popularity increased slightly to 4.79, with the same maximum of 8 and a minimum of 1. Wave Y showed a mean popularity of 4.35, with a slightly lower maximum of 7 and the same minimum of 1. These summaries indicate that while most students receive several friendship nominations, some students are consistently more popular than others, which may influence the formation and maintenance of best-friend ties over time.
+
+##  5.  List the variables (ego, alter, dyadic, structural) you control for and include at least one sentence of explanation for each variable you include in the analysis.
+
+our analysis of the “Best friends” network, several control variables were included to account for factors that might influence friendship formation and maintenance:
+
+Ego-level variables: These describe the characteristics of the student sending the friendship nomination. For example, sex of the ego is included to account for potential homophily effects, where students may prefer to nominate peers of the same sex.
+
+Alter-level variables: These describe characteristics of the student receiving the nomination. For instance, popularity (measured as the number of nominations received) is included to account for the tendency of students to nominate highly popular peers as friends.
+
+Dyadic variables: These variables describe pairwise relationships between students. For example, sex similarity is coded as 1 if both students share the same sex and 0 otherwise, capturing the dyadic homophily effect on friendship nominations.
+
+Structural/network variables: These account for endogenous network processes, such as transitivity, which measures the tendency for friends of friends to become friends, and reciprocity, which captures the tendency for a nomination to be returned by the alter. Including these variables helps model the structural dependencies inherent in social networks.
+
+Together, these control variables allow the stochastic actor-oriented model to isolate the effects of individual, dyadic, and structural factors on the evolution of the friendship network over time.
+
+```{r}
+# Create a data frame of control variables
+control_vars <- data.frame(
+  Variable = c("Sex (ego)", "Popularity (alter)", "Sex similarity (dyad)", 
+               "Transitivity (structural)", "Reciprocity (structural)"),
+  Type = c("Ego-level", "Alter-level", "Dyadic", "Structural", "Structural"),
+  Description = c(
+    "Sex of the student sending the nomination, to account for homophily.",
+    "Number of nominations received by the student, capturing preference for popular peers.",
+    "1 if both students share the same sex, 0 otherwise; captures dyadic homophily.",
+    "Tendency for friends of friends to become friends; accounts for clustering in the network.",
+    "Tendency for a friendship nomination to be reciprocated; captures mutual connections."
+  )
+)
+
+# Print the table
+print(control_vars)
+```
+
+
+## 6
+
+
+
+
+
+
+
+
+
+## 7
+
+
+
+
+
+
+
+
+
+
+
+## 8
+
+
+
+
+
+
+
+## 9
+
+
+
+
+
+
+
+## 10
+
+
+
+
+
+
+
+

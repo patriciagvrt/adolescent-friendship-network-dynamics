@@ -1,0 +1,841 @@
+---
+title: "SNA lab 2"
+author: "Alexandra Rottenkolber"
+date: "2026-01-28"
+format:
+  html:
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    toc-expand: 1
+    toc-title: Contents
+    number-sections: true
+    number-offset: -1
+    css: style.css
+    embed-resources: true
+    theme: cosmo
+editor_options: 
+  chunk_output_type: console
+---
+
+# Content of this lab: Basics of Social Network Analysis
+
+1. Add on to Friday's lab
++ Show how to fix positions of nodes in a visualisation
+
+2. Macro-level network descriptives
++ node count, edge count
++	Average degree, average in-degree, average out-degree
++ degree distributions --> see exercise section
++ density, reciprocity, transitivity
++	Shortest Path-Lengths
+
+3. Micro-level network descriptive: centrality measures
++ degree centrality
++	closeness centrality
++	betweenness centrality
++	PageRank
+
+4. Meso-level Homophily & Assortativity
++ The qualitative case: EI-Score, assortativity
++ The quantitative case: assortativity
+
+5. Exercises
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warnings=FALSE)
+options(scipen=999) # set notation option
+
+# libraries
+library(sna)
+library(igraph)
+library(glue)
+library(tidygraph)
+library(ggraph)
+library(patchwork)
+library(here)
+knitr::opts_knit$set(root.dir = here::here())
+```
+
+# Add on to Friday's lab
+
+### How to fix the position of nodes when plotting 
+
+```{r Q last time}
+# read in data from last week and make graph object
+edges_t1 <- read.csv("../session_1/s50_data/s50-network1.dat", header = FALSE, sep = " ") # adjacency matrix of the student network
+edges_t1$V1 <- NULL # remove index
+mtx <- as.matrix(edges_t1)
+grph <- graph_from_adjacency_matrix(mtx) 
+
+# plot network twice, fix node position
+pos = layout_with_kk(grph)
+par(mfrow=c(1,2)) # Two plots side to side
+plot(grph,
+     main='First round', 
+     layout = pos) # fix position
+plot(grph,
+     main='Second round', 
+     layout = pos) # fix position
+par(mfrow=c(1,1))
+```
+By specifying the layout argument with the same set of positions for both plots, we can make sure that nodes do not change position. 
+
+
+# Topological descriptives (macro level)
+
+## The very basics: Size and degree-measures
+
+Where one usually starts when trying to learn someting about a network is by looking at the number of nodes and edges. They can be accessed in different ways, for example via `length(V(grph))` or `vcount(grph)` for the node count, and `length(E(grph))` or `ecount(grph)` for the edge count. 
+
+One of the most basic properties of a node is its degree, which describes the number of links attached to a node. For undirected networks, the degree is defined as the sum over a row or a column of the adjacency matrix (which is equivalent due to the adjecency martix being symmetric for undirected graphs). For directed networks, the measure is defined a bit more nuanced: Here, we distingustish between the in-degree (number of incoming edges), and out-degree (number of outgoing links). We will look into this in more detail in the exercises (there I will also show you the respective formulas, too). The degree-measures can be further extended for weigted graphs. For weigted graphs, we talk about the strength, s, of a node, which is the sum of the weights of the edges attached to a node (for undirected graphs), as well as about the in-strength and out-strength for directed graphs.
+
+Let's look at some real world data: The data set we will use now contains the e-mail network of a large European research institution. The information was anonymized and published together with [this paper](https://cs.stanford.edu/people/jure/pubs/mappr-kdd17.pdf). An edge exists between two persons if one send the other at least one e-mail (does not have to be reciprocal). The network contains only communication within the institution (no out-going interactions).
+
+```{r load data 1}
+# load data + some preparation
+df <- read.csv("../session_2/data/email-Eu-core.txt", header = FALSE, sep = " ") # edge list 
+df$V1 <- df$V1+1 # a node ID of 0 is not allowed, we increase every ID by 1
+df$V2 <- df$V2+1 # a node ID of 0 is not allowed, we increade every ID by 1
+df_mtx <- as.matrix(df)
+G_eu <- graph_from_edgelist(df_mtx)
+```
+
+```{r descriptives 1}
+# First basic descriptives: node count, edge count, directed?
+
+## count nodes
+length(V(G_eu)) # 1005
+vcount(G_eu)
+
+# count edges
+length(E(G_eu)) # 25571
+ecount(G_eu)
+
+# directed?
+is_directed(G_eu) # yes
+```
+
+Let's look at the average degree, average in-degree, and average out-degree. What changes when we convert the directed graph into an undirected one?
+
+```{r descriptives 2}
+
+# Average degree
+avg_degree <- mean(igraph::degree(G_eu))
+avg_in_degree <- mean(igraph::degree(G_eu, mode = "in"))
+avg_out_degree <- mean(igraph::degree(G_eu, mode = "out"))
+cat("The average degree is:", round(avg_degree, 2),"\n",
+    "The average in-degree is:", round(avg_in_degree, 2), "\n", 
+    "The average out-degree is:", round(avg_out_degree, 2), "\n")
+
+# Standard deviations
+sd(igraph::degree(G_eu, mode='out'))
+sd(igraph::degree(G_eu, mode='in'))
+
+# Range
+range(igraph::degree(G_eu, mode='out'))
+range(igraph::degree(G_eu, mode='in'))
+
+
+# Make the graph symmetric (convert to an undirected graph)
+uG_eu <- as.undirected(G_eu, mode = "collapse")
+
+# Average degree for the undirected graph
+avg_degree_unsymmetric <- mean(degree(G_eu))
+
+# Average degree for the symmetric graph
+avg_degree_symmetric <- mean(degree(uG_eu))
+cat("After making the network symmetric, the average degree is:", 
+    round(avg_degree_symmetric, 2), "\n")
+
+```
+*Questions to you:*
+
+- Why is the average in- and out-degree the same?
+- Do you have an intuition for why the average degree for the directed graph is ~51, and for the symmetric one only ~33? What happened?
+
+*Your answer:*
+
+- In our e-mail network, a link is established when one person contacted another one. I.e. every link represents an interaction where at least one e-mail was sent. Every e-mail needs to have a sender and a recipient, i.e. counts 1 toward the in-degree and 1 toward the out-degree. Consequentially, the average in- and out-degree are the same.
+- When we cast our original directed network to an undirected one, only the reciprocal edges(i.e. exist in both directions) are kept. Hence, we loose all edges that do not have a counterpart pointing in the other direction.
+
+
+## Density, reciprocity and degree measures. 
+
+```{r descriptives 3}
+
+# Density
+igraph::edge_density(G_eu) # you can also report it as a percentage, density is sensitive to size
+
+# Reciprocity
+igraph::reciprocity(G_eu) # in igraph, reciprocity is edgewise by default
+sna::grecip(as.matrix(as_adjacency_matrix(G_eu)), measure = "edgewise") #measure = c("dyadic", "dyadic.nonnull", "edgewise", "edgewise.lrr", "correlation")) # check definition of other reciprocity specifications
+
+# Transitivity (= clustering coefficient)
+# Captures triangles; how many of existing triads (e.g. relationships) are actually closed
+igraph::transitivity(G_eu)
+# can also be calculated at the node-level
+#igraph::transitivity(G_eu, type = "local")
+```
+
+
+## Components strong and weak
+
+In network-science language, a connected sub-graph -- if it is not part of any larger sub-graph, and undirected -- is called a _component_ (or sometimes _connected component_). 
+
+For directed networks, the terminology has to be (again) a little more nuanced. Here, _weakly connected compnents_ and _strongly connected components_ are distinguished from each other. Let's look at an example.
+We have the following directed graph: 
+
+~~~
+(a) --> (b) <--> (c) <-- (d)   (e)
+~~~
+
+If we ignore the direction of the edges, we can walk from $a$ to $d$ without any problem. Reaching $e$, however, is not possible. Hence, $a$, $b$, $c$, and $d$ constitute a connected component, which we have to call _weak_ as we ignored the direction of the edges. 
+
+Starting at $b$ and taking the direction of the edges into account, it is possible to reach $c$, but neither $d$, $a$, or $e$. $b$ and $c$ together hence build a _strongly connected component_. 
+
+For convenience, people often start working with the largest sub-graph of a network. This sub-graph is called the _largest connected component_, and -- if it contains more than 50% of all nodes -- it deserves the name _giant component_. In real-world networks, the _giant component_ contains often more than 95% of all nodes, which means that one can learn already a lot by only examining this component.
+
+
+```{r descriptives 4}
+
+# Number of strongly connected components
+scc <- igraph::components(G_eu, mode = "strong")
+num_scc <- scc$no
+
+no_max_scc <- max(scc$csize) # largest one
+no_min_scc <- min(scc$csize) # smallest one
+
+scc$csize[scc$csize > 1] # only components that have more than 1 member
+
+cat(glue("For the EU-core network, we observe {num_scc} strongly connected components, of which the largest one contains {no_max_scc} nodes, and the smallest one {no_min_scc}."))
+
+# Number of weakly connected components
+wcc <- igraph::components(G_eu, mode = "weak")
+num_wcc <- wcc$no
+
+# size of components 
+no_max_scc <- max(wcc$csize) # largest one
+no_min_wcc <- min(wcc$csize) # smallest one
+
+wcc$csize[wcc$csize > 1] # only components that have more than 1 member
+
+cat(glue("For the EU-core network, we observe {num_wcc} weakly connected components, of which the largest one contains {no_max_scc} nodes, and the smallest one {no_min_wcc}."))
+```
+
+*Questions to you:*
+
+- What can you infer from the number of strongly and weakly connected components? (Keep in mind that we are looking at an e-mail network (who wrote whom).)
+- What does it mean that the smallest component contains only one node?
+
+*Your answer:*
+
+- In the weakly connected components, ties do not need to be reciprocal. Hence, they can include connections where the receiver of an e-mail never replied to its sender, connections that were established by using a mailing list where the receivers did not need to reply at all, etc. These components most like also include many (?) interactions that happened only once at all (i.e. where there was no follow-up/reoccurring exchange established). In the strongly connected components on the contrary, all ties are reciprocal. Hence, it is reasonable to assume that it covers more meaningful conversations where real exchange happened. And it's also intuitive that the network decomposes in more smaller units the stronger the requirement on edges are that need to be fulfilled. As we are looking at an e-mail network of an research institution, it is somewhat intuitive that there are -- in total -- more strongly connected components (groups that work closely together. Maybe these components even correspond to research units?), than weakly connected ones (where exchange might happen only occasionally; maybe exchanges between units?). This is roughly what we can infer/hypothesise about the network at this point in time.
+
+- It means that there are some people present in our data who send an e-mail to themselves (self-loops).
+
+*FYI.* A very usful technique that is sometimes used instead of looking at the largest connected component is called k-core decomposition (You do not need to worry about this now. I am just mentioning it so that you know it exists and have an idea for when it can be helpful). The objective of that method is to disentangle the hierarchical structure of networks by extracting -- step by step -- more densly connected central cores. It can, for example, help to find the most important/most relevant sub-unit/core that is not necessarily a component itself (as it is probably smaller). If you want you can ask me in the Lab session and I can explain a bit more. For our e-mail network, we could use it to find the core of best connected people, instead of looking at the largest "clique" (component).
+
+
+
+# Centralities and position-based metrics
+
+Which are the important nodes? Ranking nodes by their importance is a rather non-trivial task. If we have no better idea, we could start by looking at degrees, and conclude that the nodes with the most links are likely to be the most important ones. By taking this approch, however, we might miss important information. What, for example, if a node bridges two communities, and if this particular node was gone, there was no connection left between them? Such a node has probably a very small degree (maybe 2), but is extremely important for the a networks' topological characteristics (citical for example for information flow, exchange, exposure, etc.). Network scientists acknowledged this problem, too, and developed different metrices (usually summarised as centrality measures) to cover these specialities. In this exercise, we will take a look at a few examples. But first, some important terms:
+
+## Some terminology: Random walk, path, shortest path, diameter
+
+*Random walk*: A walk from one node to another one by which the choice of nodes that are passed in between is random.
+
+*Path*: Walk where all nodes visited are distinct.
+
+*Shortest path*: Of all the paths that connect two nodes, the shortest one (in terms of how many nodes are passed/how many edges crossed). Often used in social network analyis to examine information flow. For directed networks: A shortest path must respect the direction of its edges.
+
+*Diameter*: Number of edges in the longest of all shortest paths present in a network.
+
+## The shortest path
+
+Knowing the length distribution of all shortest paths in a network can tell us a lot about a networks connectivity. A narrow distribution implies that all nodes are somewhat equally connected to each other (or: more or less equally far apart from the average node of a network). A spread out disrtibution, however, can indicate that some nodes are far out in the periphery, whereas others build a densly connected core.
+
+For this part, we are not interested in the direction of edges but only in the fact, whether a connection exists or not (i.e. we can work with the undirected graph). (We can hypothesise that, if you received an e-mail from a person, but did not answer it, you are still connected to them in the way that you have each others contact infromation. This is also true for the opposite case).
+
+```{r shortest paths}
+# Calculate shortest paths from a specific node (e.g., node 1)
+shortest_paths_from_1 <- shortest_paths(uG_eu, from = 1)
+#print(shortest_paths_from_1$vpath)
+
+# Calculate the shortest path between two specific nodes (e.g., 1 and 100)
+shortest_path_1_to_100 <- shortest_paths(uG_eu, from = 1, to = 100)
+#print(shortest_path_1_to_100$vpath)
+
+# Calculate all-pairs shortest paths
+shortest_paths_mtx <- distances(uG_eu) # Computes the lengths of shortest paths between all pairs of nodes in the graph. Returns a matrix where the entry [i, j] is the shortest path distance between nodes i and j.
+```
+
+
+```{r histogram shortest paths}
+# Flatten the distance matrix into a vector and remove self-loops (distance = 0)
+shortest_path_lengths <- as.vector(shortest_paths_mtx[shortest_paths_mtx > 0])
+
+# Plot a histogram of shortest path lengths
+hist(shortest_path_lengths, 
+     main = "Histogram of Shortest Path Lengths", 
+     xlab = "Shortest Path Length", 
+     ylab = "# Paths", 
+     xlim = c(0, 7), 
+     border = "white")
+```
+
+Usually, paths length are roughly normally distributed (something like the classical bell shape). This is also the case for our network.
+
+Most likely, you have already heard of the "[six degrees of separation](https://www.theguardian.com/technology/2008/aug/03/internet.email)" or the "six handshake rule" which is thought to describe "social distance". It states that -- on average -- two people are only six steps apart from each other. Let's use what we have just learned to investigate how large the average degree of separation is for our network (how many edges are on average between node $v_i$ and $v_j$): 
+
+```{r degree of separation }
+# Get largest connected component
+largest_component <- which.max(scc$csize)  
+
+# Create a subgraph containing only the largest connected component
+largest_scc <- induced_subgraph(uG_eu, which(scc$membership == largest_component))
+
+avg_path_length <- mean_distance(largest_scc, directed = FALSE, unconnected = FALSE)
+cat(glue("Our network has {round(avg_path_length, 2)} degrees of separation."))
+```
+
+**Questions to you:** 
+- Do you have an intuition for why we looked at the largest strongly connected component, and not at the weakly one? 
+
+**Your answer:** 
+- One could also have choosen to look at the largest weakly connected component. The code would have worked equally well. But which approach makes more sense? Looking at the largest strongly connected component is a bit more meaningful as all edges present in it are reciprocal. By choosing the strongly connected component, we secure that we investigate a graph where everyone can actually be reached by everyone else (a useful pre-condition if we want to look at the "degrees of separation" in a network). 
+
+
+
+## Closeness Centrality 
+
+Closeness centrality can be thought of as a reachability measure. The score is normalised. 1 means that all nodes which are reachable are so directly (other words: if every node is directly connected to node $v$, then $v$'s centrality score would be 1). A score below 1 indicates that paths are less direct. 
+
+In mathematical terms, the closeness centrality (for node $v$) can be expressed as : 
+
+$$ C(v) = \frac{|V| - 1}{\sum_{u} |P_{vu}|} \left(  = \frac{1}{\text{Average Path Length}_{v}} \right) = \text{distance}^{-1} $$
+
+with $|P_{vu}|$: length to go from $v$ to $u$; 
+
+$|V| - 1$: the number of all possible destination in a network if one starts from $u$, which is equal to the number of nodes minus 1.
+
+
+```{r closeness centrality}
+
+cc_igraph <- igraph::closeness(largest_scc, mode = "in") # here we get NANs for those nodes which are isolates
+cc_sna <- sna::closeness(as.matrix(as_adjacency_matrix(uG_eu)), cmode="suminvundir") # alternative we can take an approach suggested by Gil and Schmidt (1996), available via the SNA packages, that allows the graph to be disconnected. Use cmode="suminvdir" for a directed graph
+hist(cc_sna,
+     main = "Histogram of Closeness Centrality values", 
+     xlab = "Closeness Centrality", 
+     ylab = "Count", 
+     breaks = 50,
+     border = "white")
+```
+
+**Questions to you:** 
+
+- Interpret the distribution. What do you see and how can it be interpreted?
+
+**Your answer:** 
+
+- There are some nodes in that undirected e-mail network which have a closeness centrality (cc) of zero (~20 nodes). This means that they are not reachable by the rest of the nodes (these nodes are isolates), but are still included in the data as they probably had -- in the directed version of the network -- an outgoing link to at least one of the other nodes. For all other nodes which have a closeness centrality scores != 0, the scores are (very) roughly normally distributed, and range from 0.2 to 0.57. Observing a normal distribution of closeness centrality scores is an indication for a relatively even level of accessibility in a network. There are some nodes that are easier to reach (cc score close to 0.6), and some that are less easy to reach (cc score closer to 0.2).
+
+## Betweenness Centrality 
+
+Betweenness centrality and closeness centrality have some commonalities. Both are distance-related measures, characterising a node's position in the entire network. While the closeness centralitiy of a node can be thought of as a measure for "reachability", a node's betweenness centrality is an indication of how much nodes act as "intermediaries". 
+
+For betweenness, ones takes a node and looks at how fast every other node can be reached  (i.e. counts the number of edges that need to be crossed). For betweenness, one looks at all shortest paths in a networks and counts how many times one specific node is part of them. 
+
+
+$$ C_B(v) =\sum_{s,t \in V} \frac{\sigma(s, t|v)}{\sigma(s, t)} $$
+    
+where $V$ is the set of nodes; 
+
+$\sigma(s, t)$ is the number of shortest $(s, t)$-paths; 
+
+and $\sigma(s, t|v)$ is the number of those paths  passing through  node $v$ other than $s, t$. 
+
+If $s = t$, $\sigma(s, t) = 1$, and if $v \in {s, t}$, $\sigma(s, t|v) = 0$.
+
+```{r betweenness centrality}
+bc_sna <- sna::betweenness(as.matrix(as_adjacency_matrix(G_eu)), cmode="directed", gmode="digraph")
+bc_igraph <- igraph::betweenness(G_eu, directed = TRUE,  weights = NULL,  normalized = TRUE)
+hist(bc_igraph, 
+     breaks = 50, 
+     main = "Histogram of Betweenness Centrality values", 
+     xlab = "Betweenness Centrality", 
+     ylab = "Count", 
+     border = "white")
+
+max(bc_igraph)
+```
+
+
+**Questions to you:** 
+- Interpret the distribution. What do you see and how can it be interpreted?
+
+**Your answer:** 
+
+- Betweenness centrality indicates how much a nodes acts "as a bridge between two hubs". There are not so many "bridges" present in our network: Most nodes have a rather small betweenness centrality score. This can be an indication for different hubs beeing nicely connected via several paths with each other, or that there are simply no hubs present. This is all that we can infer about our network at this point in time. (Those nodes which are isolates are counted in the betweenness = 0 pile along with those of in-degree = 0). 
+
+
+**Comment.** Centrality functions use the shortest path lengths and are hence sensitive to the direction of edges in directed graphs.
+
+## PageRank
+
+PageRank was invented by Google in 1988 to rank webpages by their importance for their search engine (It's desinged for directed graphs). PageRank became extreamly famous as it solved a the problem that for networks that are not fully connected, i.e. consists of several components, it was not possible to calulate one ranking for the whole graph. Rather one got several rankings: One for each component. To solve that issue, Google founders Larry Page and Sergei Brin had a very smart -- and almost embarrassingly easy to implement -- idea: They wanted a random walker traversing though their graph to be able to hop between components. They implemented it by assigning a tiny probability to a "teleportation to another component" option to every step in the random walk. This idea is equivalent to adding very weak edges (edges having a very small weight) connecting all components. The damping factor $\alpha$ in the PageRank calucation (see code below) is defined as one minus the "teleportation probability". 
+
+Damping factor: $\alpha = 1-\epsilon$, with $\epsilon$ can be thought of the "teleportation parameter"/probability of a jump. 
+
+If $\epsilon = 0$ PageRank becomes the degree. 
+
+```{r PageRank}
+pr <- igraph::page_rank(G_eu, damping = 0.9, algo = "arpack")$vector
+hist(pr,
+     main = "Histogram of PageRank Centrality values", 
+     xlab = "PageRank", 
+     ylab = "Count", 
+     breaks = 100,
+     border = "white")
+
+min(pr)
+sum(pr)
+```
+
+**FYI.** There are many more node-ranking algorithms around that are alternatives to the ones shown above (Eigenvector centrality is similiar to PageRank for example), or measure slightly different characteristics (Katz, Reach). They are nicely summarised [here](https://www.networkatlas.eu/files/sna_book.pdf), Chapter 11. 
+
+**Comment.** With networks it is always the same: By now, there are a multitude of options, approaches and measures out there, but finding the right tool (centrality measure, etc...) for the job you want to so, is always one of the main tasks and requires a bit of exploring, understanding your research question well, and deciding upon the optimal strategy. 
+
+
+
+
+# Homophily & Assortativity
+
+_-- This is about sorting of nodes based on attributes --_ 
+
+or "birds of the same feather flock together".
+
+In social networks, homophily implies that nodes of a similar kind connect with each other ([famous paper with regard to homophily in Social Networks](https://www.annualreviews.org/doi/10.1146/annurev.soc.27.1.415)).
+
+It is, however, important to keep in mind that there are many factors which can influence homophily and not all of them are driven by individual preferences: In some cases, homophilic clustering might also emerge from constrained access. It might be the case that people group together not because they dislike others who are different but simply because they do not have access to the other group. Sometimes, it might also be the case that observed patterns are driven by a combination of preferences and access. The exact mechanism, however, is nothing that can be inferred from looking at a network's mesostructure only. Usually, a deeper investigation is required for that.
+
+## Quantifying homophily: EI index, assortativity index
+
+What would be really helpful is to have an objective way of quantifying the extent to which homophily is driving a network's connections. There are two different ways to measure homophily, depending on whether node attributes are qualitative or quantitative. 
+
+### The qualitative case: EI index, qualitative assortativity index
+
+**_EI score_.**
+One approach sometimes used is called the EI score. It gives an idea of how "in-grouped" a network is and reads in mathematics terms: 
+
+$$ EI = \frac{(\text{Number of external links} - {\text{Number of internal links}})} {(\text{Number of external links} + \text{Number of internal links})} $$
+
+The EI score takes -1 if there is perfect homophily and +1 if there is perfect heterophily. 
+
+This approach, however, has severe shortcomings, as it does not work well if there are more than 2 groups and if groups are of different sizes. 
+
+If this were to be the case, we need a more advanced measure: 
+
+**_Qualitative assortativity_.** The assortativity coefficient $r$ describes the 
+probability of edges "connecting alike nodes per attribute value _i_ [...][compared] to the probability of an edge to have at least one node with attribute value _i_" ([Coscia (2021)](https://www.networkatlas.eu/), p. 369). ([Paper](https://arxiv.org/pdf/cond-mat/0209450.pdf) introducing the assortativity coefficient. This is also what igraph returns if you envoke `assortativity_nominal(graph, types)`).
+
+$$ r = \frac{\sum_i e_{ii} - \sum_i a_i b_i}{1 - \sum_i a_i b_i}, $$ 
+
+with $e_{ii}$ as the probability of an edge to connect to nodes of similiar kind (i.e. with attribute value $i$), $a_i$ is the probability that an edge has a node with attribute $i$ as source, and $b_i$ is the probability that an edge has a node with attribute $i$ as target. For an undirected network, $a_i = b_i$. The assortativity coefficient $r$ can be interpreted similar to Pearson correlation coefficients. $r$ is 1 if there is perfect assortativity and -1 if there is perfect disassortativity. 
+
+Figure 2 illustrates what each part of the formula means.
+
+```{r figure 2, echo=FALSE, out.width="50%"}
+knitr::include_graphics("../session_2/assortativity_coefficient.png")
+```
+
+**Figure 2: Calculation of the assortativity coefficient** (taken from [Coscia (2021)](https://www.networkatlas.eu/), p. 370).
+
+## The quantitative case: quantitative assortativity index
+
+There are two different options to estimate the assortativity for qualitative attributes. The first one focuses on the edges and the second one on the nodes.
+
+**_Edge-centric approach_** For the first one, the approach is to iterate over all edges and to create two vectors which contain the attribute, e.g. the degree/age/..., of the two endpoints for every edge. For undirected networks, every edge contributes two entries to every vector. The assortativity reported is simply the Pearson correlation coefficient of these two vectors. This is the one implemented in the igraph package. 
+
+**_Node-centric approach_.** For the second one, the approach is to fit the average attributes of the nodes' neighbours against the attribute of the nodes themselves. (Often the data needs to be log-transformed and power-fitted, e.g. for the degree assortativity!). The exponent of such a fit tells whether a network is assortative (exponent is positive), or disassortative (exponent is negative), or non-assortative (exponent is zero). (Not further investigated in this lab, just included for completeness.)
+
+
+
+## Let's look at an example:
+
+
+
+```{r ego network 1}
+# A friendship network 
+edges_dir <- c("Elizabeth", "Cindy", 
+               "George", "Cindy", 
+               "Cindy", "David", 
+               "David", "Betty", 
+               "Betty", "Adam", 
+               "Cindy", "Elizabeth", 
+               "Fred", "Betty", 
+               "Cindy", "Betty", 
+               "Adam", "Fred", 
+               "Adam", "David")
+
+# Create a undirected graph
+Gu <- graph_from_edgelist(matrix(edges_dir, ncol = 2, byrow = TRUE), directed = FALSE)
+
+# Add some attributes
+V(Gu)$gender <- c("f", "f", "m", "d", "f", "m", "m")
+V(Gu)$gender_num <- c(1, 1, 2, 3, 1, 2, 2)
+V(Gu)$age <- c(27, 25, 22, 17, 42, 51, 48)
+```
+
+```{r figure 1, echo=FALSE, out.width="50%"}
+knitr::include_graphics("../session_2/made_up_friendship_network.png") 
+```
+
+
+
+
+*_Recap_*
+
+- EI index: -1 means perfect homophily, +1 indicates perfect heterophily (or, formulated differently: positive would mean most ties are external and negative means most ties are internal (i.e. within one group).) Note. Be careful with the EI index! It works well if we have similarly sized groups, but is a bit misleading if the groups we have groups are of substantially different sizes.
+- Assortativity: Similiar to the EI score, but able to take different group sizes/more than two groups into account. 1 means perfect assortativity, -1 perfect disassortativity.
+
+
+```{r EI Index 2}
+# let check for our friendship network
+# Careful, positive assortativity means homophily (contrary to the EI index)
+?assortativity
+
+# For categorical attributes
+isnar::ei(Gu,'gender') # EI index
+isnar::assort(Gu,'gender')
+
+# how to calcualte the assortativity using the igraph package 
+igraph::assortativity_nominal(graph = Gu, 
+                              types = as.numeric(as.factor(V(Gu)$gender)), 
+                              directed = FALSE)
+
+# For continuous attributes
+isnar::assort(Gu,'age')
+assortativity_degree(Gu, directed= FALSE) # degree assortativity
+```
+
+According to the EI value, we see a tendency for heterophily with regard to “gender”. 
+
+Assortativity helps understanding if nodes tend to connect to similar or dissimilar nodes and this network property may affect the network structure: a strong assortativity on a discrete attribute may for instance break the network into subnetworks. Here, there is some extent of disassortativity with regard to gender in the network, and a stronger one for degree.
+
+_Comment:_ **Network language.** The language one usually uses for concluding about assortative mixing is something along the lines of "this friendship network is assorted by gender" (if there is not so much mixing between genders) or "this dating network is disassorted by gender" (as empirically, the majority of couples are heterosexually formed, there is "mixing" among genders).
+
+
+
+
+
+# Exercises
+
+Imagine the graph below represents a borrower & lender network, i.e. it connects people who have lent each other something (A <-- B means B has borrowed from A).
+
+Let's imagine:
+
++ a book is lent by
+
+  + Elizabeth from Cindy
+  + George from Cindy
+  + Cindy from David
+  
++ a bike is lent by
+
+  + David from Betty
+  + Betty from Adam
+  
+  
++ a jumper is lent by
+
+  + Cindy from Elizabeth
+  + Fred from Betty
+  
+  
++ a game is lent by
+
+  + Cindy from Betty
+  + Adam from Fred
+  
+An undirected graph is insufficient to capture these relationships, hence we need to create a directed representation. We will call it Gd (same network as above). We will add the people's names to the nodes as attributes and add the item that changed holder to the edges.
+
+```{r, echo=FALSE, out.width="50%"}
+knitr::include_graphics("../session_2/data/friendship_network.png")
+```
+
+```{r network from scratch}
+# Define the edges for the directed graph
+edges_dir <- c("Elizabeth", "Cindy", 
+               "George", "Cindy", 
+               "Cindy", "David", 
+               "David", "Betty", 
+               "Betty", "Adam", 
+               "Cindy", "Elizabeth", 
+               "Fred", "Betty", 
+               "Cindy", "Betty", 
+               "Adam", "Fred", 
+               "Adam", "David")
+
+# Create a directed graph
+Gd <- graph_from_edgelist(matrix(edges_dir, ncol = 2, byrow = TRUE), directed = TRUE)
+
+# Add attributes for each edge (who lent what item)
+E(Gd)$lent_item <- c("book", "book", "book",  
+                     "bike", "bike", 
+                     "jumper", "jumper", 
+                     "game", "game", "game")
+
+E(Gd)[1]
+E(Gd)[1]$lent_item
+
+# color edges based on lent item
+length(unique(E(Gd)$lent_item)) # number of unique items
+lent_items <- unique(E(Gd)$lent_item) # get unique items
+pal <- c("royalblue", "darkgreen", "orange", "violetred3") # select 4 colors
+color_map <- setNames(pal[1:length(lent_items)], lent_items)  # Map items to colors
+E(Gd)$color <- color_map[E(Gd)$lent_item] # Assign colors to edges based on the lent_item attribute
+
+# Print information about the graph
+pos = layout_with_kk(Gd)
+plot(Gd, 
+     vertex.size= 30, 
+     vertex.color= "white", 
+     vertex.frame.color = "lightgrey", 
+     vertex.label.color = "black", 
+     edge.color=E(Gd)$color, 
+     layout = pos, 
+     edge.curved=c(rep(0.1, 19)))
+```
+
+## Exercise 1: In- and out-degree, degree-distribution 
+
+(a) Print the basics descriptives of the directed version of the borrower-lender network (_Gd_) (number of nodes and edges).
+
+```{r answer 1.a}
+# number of nodes
+length(V(Gd))
+
+# number of edges
+length(E(Gd))
+```
+
+(b) For your undirected borrowing-and-lending network,
+
+- calculate the average degree $\langle k \rangle = \frac{1}{N} \sum_i k_i$ ($N$: number of nodes, $k_i$ degree of node $i$) and
+
+- plot the degree distribution. What can you learn from the distribution? 
+
+```{r answer 1.b}
+Gu <- as.undirected(Gd, mode="collapse")
+
+plot(Gu, 
+     vertex.size= 30, 
+     vertex.color= "white", 
+     vertex.frame.color = "lightgrey", 
+     vertex.label.color = "black", 
+     edge.color="grey", 
+     layout = pos)
+
+avg_degree_igraph <- mean(igraph::degree(Gu))
+avg_degree_sna <- mean(sna::degree(as.matrix(as_adjacency_matrix(Gu))), gmode = "graph", cmode = "freeman")/2 # be aware: sna package counts every edge twice for undirected graphs
+
+V(Gu)$degree <- igraph::degree(Gu)
+
+cat(glue("The undirected borrower-lender network has an average degree of {round(avg_degree_igraph, 2)}."))
+
+par(mfrow=c(1,2))
+# degree distribution of the lender-borrower network
+hist(igraph::degree(Gu),
+     main = "Degree distribution\nundirected graph", 
+     xlab = "Degree", 
+     ylab = "Count", 
+     breaks = 20,
+     border = "white")
+
+# degree distribution of a random graph
+hist(igraph::degree(igraph::erdos.renyi.game(n = 1000, p.or.m = igraph::edge_density(Gu))),
+     main = "Degree distribution\nrandom graph", 
+     xlab = "Degree", 
+     ylab = "Count", 
+     breaks = 20,
+     border = "white")
+par(mfrow=c(1,1))
+```
+
+The node degrees of our undirected lender-borrower/friendship network are not normally distributed (as are the ones of the random graph). This is, sloppily speaking, an indication that these relationships do not form randomly, but that this process is moderated by some other forces (e.g. personal characteristics of people, etc, etc ...). This observation aligns well with anybody's intution ;) about friendship formation.
+
+
+(c) For your directed lender/borrower network,
+
+- calculate the average in- and out-degree. 
+
+The in-degree of node $i$ is definded as $k_i^{in} = \sum_j A_{ij}$, with $A$ being the adjacency matrix, $i$ the target node. 
+The out-degree of node $i$ is definded as $k_i^{out} = \sum_j A_{ji}$, with $A$ being the adjacency matrix, $i$ the source node. 
+
+- plot the in-degree and out-degree distribution. What can you learn from the distribution? 
+
+```{r answer 1.c}
+avg_in_degree <- mean(igraph::degree(Gd, mode = "in"))
+avg_out_degree <- mean(igraph::degree(Gd, mode = "out"))
+
+cat(glue("The directed borrower-lender network has an average in-degree of {round(avg_in_degree, 2)} and an average out-degree of {round(avg_out_degree, 2)}."))
+
+par(mfrow=c(1,2))
+# degree distribution of the lender-borrower network
+hist(igraph::degree(Gd, mode = "in"),
+     main = "Degree in-degree distribution", 
+     xlab = "Degree", 
+     ylab = "Count", 
+     breaks = 20,
+     border = "white")
+
+# degree distribution of a random graph
+hist(igraph::degree(Gd, mode = "out"),
+     main = "Degree out-degree distribution", 
+     xlab = "Degree", 
+     ylab = "Count", 
+     breaks = 20,
+     border = "white")
+par(mfrow=c(1,1))
+```
+
+What does the average degree tell us? 
+
+*Your answer:*
+
+*Example answer:*
+
+The in-degree indicates how many items a person gave away/lent to someone (i.e. how many items that belong to a person/node are away), while the out-degree describes how many items a person borrowed. 
+
+The in-degree distribution tells us that there is one person who did not lent anything (this is George). Most people lent away one item. And then there is one "generous super-lenders" who gave away three items (this is Betty).  
+
+The out-degree distribution tells us that borrowing is more clustered. Most people borrow only one item, but then there is a person who does not seem to be too well equipped: This person had to borrow three items. Or is it maybe the case that this person is just more central in the network and hence serves as kind of an "exchange hub"? -- This is nothing we can tell from the degree distribution only. Therefore we need more descriptives, such as for example node centrality measures. We will look into this soon. 
+
+## Exercise 2: Ranking nodes -- Which are the important ones?
+
+(a) Calculate the closeness centrality for the borrower-lender network. Plot the distribution. What does the pattern you see mean (undirected network will suffice)?
+
+(b) Do the same as in (a) for betweenness and PageRank (undirected network will suffice). What does the pattern you see mean?
+
+(c) Create four network visualisations in which the color of the nodes indicates the degree, closeness centrality, the betweenness centrality, and the PageRank, respectively. Have a look at the tidygraph and ggraph package to easily generate such colour-coded plots: https://ggraph.data-imaginist.com/articles/tidygraph.html
+
+```{r answer 3.a-3.b}
+cc <- igraph::closeness(Gu) 
+bc <- igraph::betweenness(Gu, directed = FALSE, normalized = TRUE) 
+pr <- igraph::page_rank(Gu, damping = 0.9, algo = "arpack")$vector
+
+
+par(mfrow=c(1,3))
+hist(cc,
+     main = "Distribution for closeness", 
+     xlab = "Closeness score", 
+     ylab = "#", 
+     ylim = c(0, 5), 
+     breaks = 7,
+     border = "white")
+
+hist(bc,
+     main = "Distribution for Betweenness", 
+     xlab = "Betweenness score", 
+     ylab = "#", 
+     ylim = c(0, 5), 
+     breaks = 7,
+     border = "white")
+
+hist(pr,
+     main = "Distribution for PageRank", 
+     xlab = "PageRank score", 
+     ylab = "#", 
+     ylim = c(0, 5), 
+     breaks = 7,
+     border = "white")
+par(mfrow=c(1,1))
+```
+
+*Closeness* There are two people that stand out in terms of their closeness score: They are better reachable then the rest. Looking at the figure of your fiendship network above this are likely Cindy and Betty. (We will plot a colorcoded network in a second to verify this).
+
+*Betweenness* There are -- again -- two people that stand out in terms of their capacity to "bridge groups". One is probably Cindy again, but who could be the other person? Maybe also Betty? Let's see in question (c).
+
+*Pagerank* This time we see that there are four people that are rather important for this whole network. Likey those are the ones that most central/best connected.
+
+
+```{r answer 3.c, warning=FALSE, message=FALSE}
+# Add attributes for each edge (who lent what item)
+V(Gu)$closeness <- cc
+V(Gu)$betweenness <- bc
+V(Gu)$PageRank <- pr
+```
+
+```{r add on wrt tidygraph1, warning=FALSE, message=FALSE}
+Gu_tidy <- as_tbl_graph(Gu)
+
+# Assign centrality score as attribute, example here is betweenness centrality
+Gu_tidy <- Gu_tidy |> 
+  activate(nodes) |> 
+  mutate(degree = centrality_degree(),
+         betweenness = centrality_betweenness(),
+         closeness = centrality_closeness(),
+         pagerank = centrality_pagerank()) 
+
+
+set.seed(42)
+set_layout <- Gu_tidy |> 
+  create_layout(layout = 'fr')
+
+p1 <- Gu_tidy |> 
+  ggraph(layout = set_layout) +
+  geom_edge_link(color = "gray") +
+  geom_node_point(aes(color = degree), size = 10)+
+  geom_node_text(aes(label = name), colour = "black", vjust = -2, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "darkblue",
+                       name  = "degree") +
+  theme_void()+
+  labs(title = "Degree centrality")
+
+p2 <- Gu_tidy |> 
+  ggraph(layout = set_layout)+
+  geom_edge_link(color = "gray") +
+  geom_node_point(aes(color = betweenness), size = 10) +
+  geom_node_text(aes(label = name), colour = "black", vjust = -2, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "darkblue",
+                       name  = "betweenness") +
+  theme_void()+
+  labs(title = "Betweenness centrality")
+
+p3 <- Gu_tidy |> 
+  ggraph(layout = set_layout)+
+  geom_edge_link(color = "gray") +
+  geom_node_point(aes(color = closeness), size = 10) +
+  geom_node_text(aes(label = name), colour = "black", vjust = -2, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "darkblue",
+                       name  = "closeness") +
+  theme_void()+
+  labs(title = "Closeness centrality")
+
+
+p4 <- Gu_tidy |> 
+  ggraph(layout = set_layout)+
+  geom_edge_link(color = "gray") +
+  geom_node_point(aes(color = pagerank), size = 10) +
+  geom_node_text(aes(label = name), colour = "black", vjust = -2, size = 4) +
+  scale_color_gradient(low = "lightblue", high = "darkblue",
+                       name  = "pagerank") +
+  theme_void()+
+  labs(title = "Pagerank centrality")
+
+
+p1 + p2 + p3 + p4 + plot_layout(guides='collect') &
+  theme(legend.position='bottom') &
+  scale_x_continuous(expand = expansion(mult = 0.2)) &
+  scale_y_continuous(expand = expansion(mult = 0.2))
+```
+
+
+
+
+
+
