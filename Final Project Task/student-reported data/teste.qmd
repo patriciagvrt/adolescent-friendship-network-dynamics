@@ -1045,19 +1045,52 @@ p_triad_m2 <- get_p(gof_triad_m2)
 invisible(capture.output(plot(gof_triad_m2)))
 ```
 
+
 ```{r}
-library(RSiena)
+#| label: estimate-model3
+# cria Modelo 3 a partir do Modelo 2
+eff_m3 <- eff_m2
+eff_m3 <- includeEffects(eff_m3, cycle3)  # exemplo
 
-# supondo que seu ajuste final esteja em: ans
-# e o nome da sua rede no sienaData esteja em varName, ex: "friendship"
-gof.triad <- sienaGOF(ans, TriadCensus, varName = "friendship",
-                      join = TRUE, verbose = TRUE, nsim = 1000)
-
-plot(gof.triad)
-print(gof.triad)   # mostra o p global
+# estima o Modelo 3 (use o mesmo alg que você usou no Modelo 2)
+res_m3 <- siena07(
+  alg_m3,
+  data = siena_dat,
+  effects = eff_m3,
+  prevAns = res_m2,
+  batch = TRUE,
+  silent = TRUE
+)
 
 ```
 
+
+```{r}
+#| label: gof-model3
+#| include: false
+
+sims_m3 <- siena07(
+  gof_alg,
+  data = siena_dat,
+  effects = eff_m3,
+  prevAns = res_m3,
+  returnDeps = TRUE,
+  batch = TRUE,
+  silent = TRUE
+)
+
+gof_triad_m3 <- sienaGOF(sims_m3, varName = dep_name, TriadCensus)
+p_triad_m3 <- get_p(gof_triad_m3)
+```
+
+
+```{r}
+#| label: fig-gof-triad-m3
+#| echo: false
+
+invisible(capture.output(plot(gof_triad_m3)))
+p_triad_m3
+```
 
 ```{r}
 #| label: tbl-gof-compare
@@ -1090,7 +1123,8 @@ knitr::kable(gof_compare, digits = 3)
 ```{r}
 #| label: tbl-m1-m2-compare
 #| tbl-cap: "Key estimates comparison, Model 1 vs Model 2."
-#| echo: false
+#| echo: str(gof.triad, 1)
+names(gof.triad)false
 #| results: asis
 #| message: false
 #| warning: false
