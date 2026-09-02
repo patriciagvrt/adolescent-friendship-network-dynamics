@@ -1,7 +1,7 @@
 ---
-title: "SNA lab3"
+title: "Lab 1"
 author: " $ patricia  givort cruz cabral"
-date: "2026-02-15"
+date: "2026-08-23"
 format:
   pdf:
     number-sections: false
@@ -21,18 +21,16 @@ execute:
 ```{r setup 1, inclue=FALSE}
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
-library(network)
-library(sna)
-library(latticeExtra)
-library(ergm)
-library(statnet)
-library(knitr)
-library(igraph)
-library(dplyr)
-library(tidyr)
+library(data.table)  # Importing and manipulating data
+library(glmnet)      # Ridge/lasso regression
+library(ggplot2)     # Plotting
+library(mlbench)     # Example data used below
+library(caret)       # Cross-validation and model evaluation
+library(splines)     # Natural splines: ns()
+library(ggeffects)   # Model-based predictions: ggpredict()
+setwd('C:/Users/paty_/OneDrive/Documentos/LAB machine learning/Lab1/Lab1')
 
-
-load("~/GitHub/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/PairB.RData")
+load("")
 
 
 
@@ -40,15 +38,57 @@ load("~/GitHub/Lab-assignments---Social-Network-Analysis/LAB 3 SNA/PairB.RData")
 
 ```{r,inclue=FALSE }
 #| echo: false
-# check
-gender <- student_vars$boy
-length(gender)                 
-table(gender, useNA = "ifany") 
 
-gender_lab <- factor(ifelse(gender == 1, "boy", "girl"))
-table(gender_lab)
-ls()
+# --------------------------------------------------------
+# High-dimensional data example
+# --------------------------------------------------------
 
+# Objective: predict sentiment based on language used in IMDB reviews
+
+# Import (pre-processed) IMDB data.
+# Keep this R file and imdb_data.csv in the same folder.
+trumpbernie <- fread(file = "trumpbernie.csv")
+
+# Inspect
+trumpbernie[1:10,1:10]
+dim(trumpbernie) # High-dimensional? Yes.
+
+# Format the outcome as a factor for classification with caret
+trumpbernie[, trump_tweet := as.factor(trump_tweet)]
+
+
+
+colnames(trumpbernie)
+# Fit ridge regression
+# Assess a range of lambda values through (5-fold) cross-validation
+X <- trumpbernie[,-c('id','trump_tweet'),with=F] # Exclude response and id columns.
+X <- as.matrix(X) # Make input data into a matrix
+
+# Important: standardize=TRUE makes glmnet standardize X internally when
+# fitting/penalizing the model. However, coef() later returns coefficients
+# transformed back to the original X scale.
+
+set.seed(12345)
+cvglmnet <- cv.glmnet(x = X, 
+                      y = imdb$sentiment,
+                      nfolds = 5,              # Number CV-folds
+                      standardize = TRUE,      # Standardize X internally when fitting
+                      family='binomial',       # Outcome binary --> logit/binomial
+                      alpha=0,                 # alpha=0 --> ridge
+                      type.measure = 'class')  # CV criterion: misclassification error
+
+# Which lambda gave the lowest cross-validated error?
+cvglmnet
+cvglmnet$lambda.min
+
+# Convert the lowest misclassification error to accuracy
+1 - min(cvglmnet$cvm)
+
+plot(cvglmnet, sign.lambda = 1) 
+
+# From plot:
+# i) Large penalties can worsen performance by increasing bias.
+# ii) Note that lambda is shown on a log scale.
 
 
 
@@ -58,21 +98,14 @@ ls()
 
 # Introduction
 
-> This assignment investigates hierarchical processes in adolescent peer networks using exponential random graph models (ERGMs). The theoretical motivation is rooted in research on peer status differentiation during adolescence, where two related but distinct forms of social standing are identified: acceptance, typically measured through liking nominations, and popularity, measured through recognition of visibility and prestige. Although these constructs are related, they capture different dimensions of social hierarchy and may be driven by different network mechanisms.
-
-> Building on classical theories such as the Matthew effect, preferential attachment, and sociodynamic processes, this assignment explores whether hierarchical tendencies are present in three types of networks: friendship, liking nominations, and popularity nominations. In particular, the focus lies on understanding what determines high indegree in these networks and whether mechanisms such as preferential attachment operate differently across them.
-
-> To address these questions, we combine conceptual reasoning with empirical network modelling. First, theoretical expectations are formulated regarding hierarchy and status differentiation in different types of peer relations. Second, descriptive network measures are compared across networks. Third, exponential random graph models are estimated to evaluate whether mechanisms such as reciprocation, gender homophily, transitive closure, and preferential attachment help explain the observed network structures. Finally, model comparison and goodness-of-fit assessment are used to evaluate how well these mechanisms capture the structure of adolescent peer hierarchies.
+> 
 
 
 
 
 ## 1. Explain your expectation!
 
-> I would expect preferential attachment, or the Matthew effect, to be stronger in the popularity network than in the liking network.
->Preferential attachment refers to a cumulative advantage process in which individuals who already receive many nominations are more likely to receive additional ones. In social terms, this implies that status reinforces itself: those who are already seen as important, visible, or prestigious attract even more recognition.
->Popularity nominations are conceptually closer to status attribution than liking nominations. When students nominate someone as popular, they are not necessarily expressing a personal emotional preference, but rather recognizing a perceived social standing. Such reputational processes are highly visible and socially shared. If many peers consider someone popular, others are more likely to do the same, either because they genuinely perceive high status or because popularity becomes socially self-reinforcing. This creates a classic cumulative advantage dynamic.
->In contrast, liking nominations reflect personal affect or friendship preference. While popular individuals may also be liked, liking is more relational and embedded in local interactions. It is influenced by reciprocity, shared activities, and homophily rather than purely by reputational prestige. Therefore, although some preferential attachment could still occur in liking networks, it is expected to be weaker.
+> 
 
 
 
@@ -82,15 +115,12 @@ ls()
 ## 2. Friendship  expectation
 
 
-> If friendship contains elements of both liking and popularity, then we would indeed expect the strength of the Matthew effect in the friendship network to lie somewhere between the two.
->Friendship nominations typically reflect mutual interaction, emotional closeness, and ongoing social exchange, which makes them similar to liking. At the same time, friendship can also be influenced by status considerations. Highly visible or socially central individuals may attract more friendship nominations simply because they are widely known, socially active, or embedded in multiple groups. In this sense, friendship can contain a reputational component similar to popularity.
->However, friendship is usually more demanding than simply liking or perceiving someone as popular. It often implies reciprocity, shared time, and stronger relational commitment. These structural features tend to limit extreme cumulative advantage processes. While popular students might receive many popularity nominations, and liked students may receive many liking nominations, friendship ties are constrained by time, emotional investment, and network closure. This can dampen pure preferential attachment dynamics.
->We would expect the Matthew effect to be strongest in the popularity network, weakest in the liking network, and of intermediate strength in the friendship network. Friendship combines status-driven visibility with relational constraints, producing a cumulative advantage process that exists, but is less extreme than in pure popularity nominations.
+>
 
 
 ## 3. Control mechnisms
 
-> It is a good idea to include gender homophily, reciprocation, and transitive closure when analyzing adolescent networks, even if the main focus is on hierarchy, because these mechanisms represent fundamental structural processes that shape peer relations independently of status differentiation. First, gender homophily is one of the most robust and well-documented patterns in adolescent networks. Young people tend to interact more frequently with same-gender peers, especially during early and middle adolescence. If gender homophily is not included in the model, patterns of clustering or uneven indegree might be mistakenly attributed to hierarchy when they are in fact driven by gender-based segmentation. Including homophily helps control for similarity-based tie formation and prevents biased interpretation of status effects. Second, reciprocation captures the tendency for ties to be mutual. In friendship and liking networks especially, receiving a nomination increases the likelihood of returning one. Reciprocity generates structural dependencies in the network that directly influence indegree. Without accounting for reciprocity, high indegree could be misinterpreted as hierarchical prominence, when in reality it may reflect balanced mutual exchanges. Including reciprocation allows us to distinguish hierarchical asymmetry from reciprocal bonding. Third, transitive closure represents the tendency for friends of friends to become connected. Adolescents often form tightly knit groups, and these closure processes produce clustering and local cohesion. Transitivity can indirectly affect hierarchical structures because individuals embedded in dense clusters may accumulate nominations simply due to structural position rather than prestige. If transitive closure is not modeled, hierarchical effects may be overstated.
+> 
 
 
 
@@ -99,11 +129,7 @@ ls()
 ## 4. Hierarchy index
 
 
-> A good index to express hierarchy, or hub formation, in terms of indegree is indegree centralization.
-
->Indegree centralization summarizes how unequal the indegree distribution is across individuals, relative to a theoretical maximum for a network of the same size. It answers the question: “To what extent is this network organized around one, or a few, highly nominated individuals?”
->The logic is that a strongly hierarchical network has a “top” structure, where a small number of nodes receive many nominations and most others receive few. Indegree centralization captures exactly this kind of differentiation. It is especially appropriate for adolescent popularity or status networks, where hierarchy often takes the form of a small elite receiving a disproportionate share of nominations.
->This index is also attractive because it is interpretable and comparable across networks: if we compute indegree centralization for the friendship, liking, and popularity networks, higher values indicate stronger hierarchy or hub formation. In contrast, lower values indicate a more equal distribution of nominations, suggesting weaker hierarchy.
+> 
 
 
 
