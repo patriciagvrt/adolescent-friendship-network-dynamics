@@ -36,9 +36,6 @@ execute:
 #| echo: false
 #| warning: false
 #| message: false
-
-
-
 library(haven)
 library(tidyverse)
 library(igraph)
@@ -48,8 +45,8 @@ library(tibble)
 library(knitr)
 
 
-
-
+# Adjust the path below to where your .sav files are stored.
+# Tip: if the .sav files are in the same folder as this .qmd, use data_dir <- "."
 data_dir <- "."
 
 waveV_path <- file.path(data_dir, "PupilsWaveV.sav")
@@ -75,7 +72,7 @@ classY <- subset(waveY, schoolnr == class_id)
 
 
 > We focus on classroom **`r class_id`** (variable `schoolnr`). This classroom was selected because it provides at least three observed waves and shows sufficient stability (composition and tie Jaccard) to support SAOM estimation while still exhibiting meaningful change over time.
-Although the original dataset contains four survey waves (W, V, X, Y), we restrict the analysis to waves V, X, and Y. Including wave W would reduce the set of pupils observed in all waves (a constant node set is required for SAOM estimation), which would substantially shrink the network used in the longitudinal model. Therefore, we focus on the three waves that preserve sufficient overlap and comparability for SAOM estimation.
+
 
 
 
@@ -83,7 +80,7 @@ Although the original dataset contains four survey waves (W, V, X, Y), we restri
 #| label: create-network-function
 #| echo: false
 # Function to transform nominations (friend1..friend12) into an adjacency matrix.
-#  codes 98/99 in the codebook are missing values and should NOT become edges.
+# Important: codes 98/99 in the codebook are missing values and should NOT become edges.
 create_network <- function(df, friend_cols, id_col = "namenr", miss_codes = c(98, 99)) {
   ids <- as.numeric(df[[id_col]])
   n <- length(ids)
@@ -178,8 +175,16 @@ knitr::kable(summary_table, digits = 3)
 
 
 >Over the three waves of data collection, the selected classroom shows a moderate change in its social structure. The number of students decreased slightly from 30 in Wave 1 to 28 in Wave 2, and then to 26 in Wave 3, indicating some turnover in classroom composition. 
+
+
+
+
 >Density increases from 0.145 (Wave V) to 0.177 (Wave X), and then slightly decreases to 0.169 (Wave Y). Composition is relatively stable (Jaccard node-set: 0.933 for V→X and 0.862 for X→Y), which supports SAOM modeling on a constant node set. However, tie stability is lower between V→X (tie Jaccard = 0.242) and moderate between X→Y (0.470), indicating substantial turnover in best-friend nominations, which makes endogenous structural effects (e.g., reciprocity and transitivity) especially relevant.
+
+
 >For the selected classroom, the “Best friends” network was constructed from the survey responses, transforming each student’s nominations into an adjacency matrix. Missing codes 98/99 (as documented in the codebook) were treated as missing nominations to allow the network to be fully analyzed.
+
+
 >We generate tables showing (i) the Jaccard stability of the node set across waves and (ii) the number of students present in all three waves.
 
 ```{r}
@@ -200,8 +205,8 @@ jaccard_table <- tibble(
   Jaccard_NodeSet = round(c(j_node_VX, j_node_XY), 3)
 )
 
-# For SAOM (RSiena), need the SAME set of students in all waves.
-# work with the intersection (students present in all three waves).
+# For SAOM (RSiena), we need the SAME set of students in all waves.
+# From here on, we work with the intersection (students present in all three waves).
 ids_common <- Reduce(intersect, list(classV$namenr, classX$namenr, classY$namenr)) |> sort()
 ids_common_n <- length(ids_common)
 
@@ -275,7 +280,6 @@ For descriptive illustration, we display a 5×5 subset of the same-sex indicator
 #| echo: false
 #| warning: false
 #| message: false
-
 # Function to create sex similarity matrix
 create_sex_matrix <- function(df, id_col = "namenr", sex_col = "sex") {
   ids <- df[[id_col]]
@@ -293,7 +297,7 @@ get_first_existing <- function(df, candidates) {
   cand[1]
 }
 
-# Create sex similarity matrices directly from wave datasets
+# Create sex similarity matrices directly from your wave datasets
 sex_col_V <- get_first_existing(classV, c("sex", "sexc", "sexd"))
 sex_col_X <- get_first_existing(classX, c("sexc", "sex", "sexd"))
 sex_col_Y <- get_first_existing(classY, c("sexd", "sex", "sexc"))
@@ -301,6 +305,30 @@ sex_col_Y <- get_first_existing(classY, c("sexd", "sex", "sexc"))
 sexV <- create_sex_matrix(classV, sex_col = sex_col_V)
 sexX <- create_sex_matrix(classX, sex_col = sex_col_X)
 sexY <- create_sex_matrix(classY, sex_col = sex_col_Y)
+```
+
+```{r}
+#| label: tbl-sex-similarity-V
+#| tbl-cap: "Sex similarity matrix (Wave V; 5×5 subset)"
+#| echo: false
+#| results: asis
+knitr::kable(sexV[1:5, 1:5])
+```
+
+```{r}
+#| label: tbl-sex-similarity-X
+#| tbl-cap: "Sex similarity matrix (Wave X; 5×5 subset)"
+#| echo: false
+#| results: asis
+knitr::kable(sexX[1:5, 1:5])
+```
+
+```{r}
+#| label: tbl-sex-similarity-Y
+#| tbl-cap: "Sex similarity matrix (Wave Y; 5×5 subset)"
+#| echo: false
+#| results: asis
+knitr::kable(sexY[1:5, 1:5])
 ```
 
 >To operationalize this dyadic hypothesis, sex similarity matrices were constructed for each wave, where each cell represents whether a pair of students share the same sex (coded as 1) or not (coded as 0). Examples of these matrices for a subset of students are:
@@ -321,6 +349,7 @@ sexY <- create_sex_matrix(classY, sex_col = sex_col_Y)
 
 
 >For the analysis of triadic characteristics in the “Best friends” network, I formulated the following hypothesis: friendship ties are likely to exhibit transitivity, meaning that if student A nominates student B as a best friend, and student B nominates student C, then student A is also likely to nominate student C. This hypothesis is grounded in the principle of triadic closure, a common phenomenon in social networks, where “friends of friends tend to become friends” (Granovetter, 1973; Snijders et al., 2010). Theoretical explanations suggest that transitive ties increase trust, reduce social tension, and facilitate cooperation within a group. In classroom networks, transitivity is often observed because students share activities, classes, and social environments, making it more likely that friendship clusters form.
+
 >To operationalize this triadic hypothesis in RSiena, we use the transTrip effect, which captures triadic closure directly within the SAOM. A positive transTrip parameter indicates that the presence of A→B and B→C increases the likelihood of A→C forming over time, reflecting clustering in the classroom network. As a descriptive check, we also compute and report global transitivity (triadic closure) for each wave.
 
 >We generate a table showing global transitivity (triadic closure) for each wave.
@@ -358,7 +387,12 @@ knitr::kable(trans_table)
 ## 4. Node Attribute Hypothesis
 
 
+
 >For the analysis of node-level characteristics in the “Best friends” network, we formulated the following hypothesis: students with higher levels of popularity (indegree) are more likely to be nominated as best friends by their peers. This hypothesis is based on the idea that individuals with high social status or visibility in the classroom attract more friendship nominations, consistent with the principle of preferential attachment in social networks. Empirical studies in adolescent classrooms indicate that popular students tend to receive more friendship ties and maintain them over time (e.g., Snijders et al., 2010). To operationalize this hypothesis, a popularity score was assigned to each student based on the total number of received best-friend nominations (indegree). This score can then be used to capture popularity dynamics in a SAOM (here via the inPop effect) to test whether higher popularity increases the likelihood of receiving additional nominations over time.
+
+
+
+
 
 
 ```{r}
@@ -425,7 +459,9 @@ ggplot(pop_summary, aes(x = Wave, y = MeanPopularity)) +
 > For the node-level analysis, the popularity of each student was calculated as the total number of best-friend nominations they received in each wave. The data were initially transformed into a long format, where each student in each wave was represented as a separate row, resulting in 84 rows in total (30 students in Wave V, 28 in Wave X, and 26 in Wave Y). To summarize the key characteristics of this node-level variable, we computed the mean, minimum, and maximum popularity per wave. In Wave V, students received on average 4.20 nominations, with a range from 0 to 8. In Wave X, the mean popularity increased slightly to 4.79, with the same maximum of 8 and a minimum of 1. Wave Y showed a mean popularity of 4.35, with a slightly lower maximum of 7 and the same minimum of 1. These summaries indicate that while most students receive several friendship nominations, some students are consistently more popular than others, which may influence the formation and maintenance of best-friend ties over time. (For SAOM estimation, we use a constant node set across waves as required by the model.)
 
 
+
 ## 5. Control Variables
+
 
 
 > Our analysis of the “Best friends” network, several control variables were included to account for factors that might influence friendship formation and maintenance:
@@ -458,7 +494,7 @@ control_vars <- tibble(
     "Transitivity (transTrip)",
     "Indegree-related popularity (inPop)",
     "Outdegree activity (outAct)",
-    "Reciprocity activity (reciAct)"   # 
+    "Reciprocity activity (reciAct)"   # <- mantenha só se estiver no Model 2
   ),
   Type = c(
     "Structural (baseline)",
@@ -495,6 +531,9 @@ knitr::kable(control_vars)
 
 >We visualize the best-friends network over time (waves V, X, Y) using fixed node positions and node colors by popularity (indegree; number of nominations received). Popularity is recalculated in each wave on the constant node set used for SAOM. Fixed positions ensure that changes in ties and in node popularity across waves can be compared directly without layout-induced movement of nodes.
 > Figures @fig-network-wave-v, @fig-network-wave-x, and @fig-network-wave-y visualize the best-friends network in Waves V, X, and Y using fixed node positions and node colors by popularity (indegree).
+
+
+
 
 ```{r}
 #| label: q6-setup
@@ -553,9 +592,6 @@ plot_wave_pop <- function(g, xy, pop_lim) {
 plot_wave_pop(gV_saom, xy, pop_lim)
 
 ```
-
-
-
 ```{r}
 #| label: fig-network-wave-x
 #| fig-cap: "Best-friends network in Wave X (fixed node positions; node color indicates popularity/indegree)."
@@ -583,7 +619,21 @@ plot_wave_pop(gY_saom, xy, pop_lim)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 ## 7. Model Specification
+
+
 
 
 >In this project, we test three hypotheses using a stochastic actor-oriented model (SAOM) in RSiena. We operationalize each hypothesis by selecting the corresponding RSiena effect(s). We generate a table showing how each hypothesis is translated into a SAOM effect.
@@ -827,7 +877,8 @@ knitr::kable(effects_df, digits = 3)
 
 
 
-> Goodness-of-fit (GoF) assesses whether the fitted SAOM can reproduce important structural features of the observed network. We simulate multiple networks from the fitted model and compare observed network statistics to the distribution of the same statistics in the simulated networks. If the observed statistics are not extreme relative to the simulated distribution (and the Monte Carlo p-values are not close to 0 or 1), the model is considered to fit those features reasonably well. Here, we evaluate GoF for the indegree and outdegree distributions. We then update the model once (Model 2) by adding `reciAct` and re-run GoF to assess whether fit improves. @fig-gof-indeg-m1 and @fig-gof-outdeg-m1 show the goodness-of-fit for indegree and outdegree in Model 1, and @tbl-gof-compare summarizes the Monte Carlo p-values for Model 1 vs Model 2.
+> Goodness-of-fit (GoF) assesses whether the fitted SAOM can reproduce important structural features of the observed network. We simulate multiple networks from the fitted model and compare observed network statistics to the distribution of the same statistics in the simulated networks. If the observed statistics are not extreme relative to the simulated distribution (and the Monte Carlo p-values are not close to 0 or 1), the model is considered to fit those features reasonably well. Here, we evaluate GoF for the **indegree** and **outdegree** distributions. We then update the model once (Model 2) by adding `reciAct` and re-run GoF to assess whether fit improves.
+Figures @fig-gof-indeg-m1 and @fig-gof-outdeg-m1 show the goodness-of-fit for indegree and outdegree in Model 1, and Table @tbl-gof-compare summarizes the Monte Carlo p-values for Model 1 vs Model 2.
 
 ```{r}
 #| label: gof-setup
@@ -956,14 +1007,11 @@ knitr::kable(gof_compare, digits = 3)
 
 
 
->We modeled best-friend nominations in classroom 09f across three waves (V, X, Y) using a stochastic actor-oriented model (SAOM). We tested (H1) sex homophily (sameX), (H2) transitivity (transTrip), and (H3) popularity reinforcement (inPop). The final model converged successfully, and we interpret the estimates as evidence about mechanisms of tie formation and maintenance in the best-friends network.
-H1 (sex homophily): The same-sex effect (sameX) is positive and borderline significant (Estimate = 0.246, SE = 0.124; t = 1.981), indicating that pupils are somewhat more likely to nominate same-sex peers as best friends over time. This provides moderate support for sex homophily in best-friend nominations.
-H2 (transitivity): Transitive triplets are strongly positive (Estimate = 0.466, SE = 0.052; t = 8.988), supporting the hypothesis that best-friend ties form through triadic closure (“friends of friends become friends”). This suggests that friendship dynamics are strongly clustered and not independent across dyads.
-H3 (popularity reinforcement): Contrary to the hypothesis, the indegree-related popularity effect (inPop) is negative (Estimate = −0.336, SE = 0.079; t = −4.274). Conditional on the other effects in the model, pupils who already receive many nominations are less likely to receive additional nominations over time. A plausible interpretation is that “best-friend” nominations are selective and constrained, so nominations may spread across classmates rather than accumulating on a small set of highly nominated pupils.
-
->Other structural effects and controls: Reciprocity is large and positive (Estimate = 3.604, SE = 0.586; t = 6.150), indicating that best-friend nominations often become mutual. The outdegree (density) parameter is negative (Estimate = −0.814, SE = 0.430; t = −1.895), reflecting the sparse nature of best-friend networks. Outdegree activity (outAct) is positive (Estimate = 0.127, SE = 0.043; t = 2.929), suggesting heterogeneity in sending nominations: some pupils are consistently more active in nominating peers. In contrast, reciprocity-related activity (reciAct) is negative (Estimate = −0.460, SE = 0.109; t = −4.218), indicating that pupils with more reciprocated ties show reduced additional outgoing activity, consistent with constraints/settling into mutual best-friend relations.
-
->Model fit. Goodness-of-fit results improved after updating the model (Model 2): Monte Carlo p-values increased from 0.096 to 0.408 for the indegree distribution and from 0.000 to 0.172 for the outdegree distribution, indicating a substantially better fit (especially for outdegree) while still leaving room for further refinements.
-
->Limitations and improvements: The SAOM estimation requires a constant node set across waves, so the analysis is based on pupils present in all three waves, which reduces sample size and may limit generalizability. Tie stability between waves is not very high, indicating substantial turnover in nominations; richer specifications and additional covariates may be needed to capture this dynamic. Also, popularity is modeled endogenously via indegree dynamics (inPop); future work could incorporate additional exogenous student attributes (from the codebook) to clarify why popularity does not accumulate in best-friend nominations in this classroom. Finally, only a small set of mechanisms was modeled; adding more covariates or comparing multiple classrooms could improve robustness.
-The results strongly support transitivity and reciprocity in best-friend dynamics, provide moderate evidence for sex homophily, and do not support popularity reinforcement (inPop is significantly negative) for this classroom and network definition.
+>In this project, we modeled best-friend nominations in classroom 09f across three waves (V, X, Y) using a stochastic actor-oriented model (SAOM). We tested (H1) sex homophily (sameX), (H2) transitivity (transTrip), and (H3) popularity reinforcement (inPop). The final model converged successfully and we interpret the estimates as evidence about mechanisms of tie formation and maintenance in the best-friends network.
+H1 (sex homophily). The same-sex effect (sameX) is positive (Estimate = 0.266, SE = 0.112; t ≈ 2.39), indicating that pupils are more likely to nominate same-sex peers as best friends over time. This provides moderate support for sex homophily in best-friend nominations.
+H2 (transitivity). Transitive triplets are strongly positive (Estimate = 0.350, SE = 0.038; t ≈ 9.16), supporting the hypothesis that best-friend ties form through triadic closure (“friends of friends become friends”). This suggests that friendship dynamics are strongly clustered and not independent across dyads.
+H3 (popularity reinforcement). Contrary to the hypothesis, the indegree-related popularity effect (inPop) is negative (Estimate = −0.376, SE = 0.079; t ≈ −4.76). Conditional on the other effects in the model, pupils who already receive many nominations are less likely to receive additional nominations over time. A plausible interpretation is that “best-friend” nominations are selective and constrained, so nominations may spread across classmates rather than accumulating on a small set of highly nominated pupils.
+Other structural effects and controls. Reciprocity is large and positive (Estimate = 1.641, SE = 0.205; t ≈ 7.99), indicating that best-friend nominations often become mutual. The outdegree (density) parameter is negative (Estimate = −0.108), reflecting the sparse nature of best-friend networks. Outdegree activity (outAct) is slightly negative (Estimate = −0.044, SE = 0.023; t ≈ −1.91), suggesting only weak/borderline evidence for additional heterogeneity in sending nominations beyond the included effects.
+Model fit. Goodness-of-fit results indicate that the model captures some key network features but may show misfit for certain degree distributions (especially outdegree). This suggests that additional effects (e.g., degree-related or reciprocity-related heterogeneity) could be considered in future model refinements.
+Limitations and improvements. First, SAOM estimation requires a constant node set across waves, so analysis is based on pupils present in all three waves, reducing sample size and potentially limiting generalizability. Second, tie stability between waves is not very high, indicating substantial turnover in nominations; richer specifications and additional covariates may be needed to capture this dynamic. Third, popularity is modeled endogenously via indegree dynamics; future work could incorporate additional exogenous student attributes (from the codebook) to clarify why popularity does not accumulate in best-friend nominations in this classroom. Finally, only a small set of mechanisms was modeled; adding more covariates or comparing multiple classrooms could improve robustness.
+Overall, the results strongly support transitivity and reciprocity in best-friend dynamics, provide moderate evidence for sex homophily, and do not support popularity reinforcement (inPop is significantly negative) for this classroom and network definition.
